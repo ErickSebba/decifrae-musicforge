@@ -1,5 +1,10 @@
-import { AlphaTabViewer } from "./components/AlphaTabViewer";
+import type { ComponentType } from "react";
 import { useAppStore, type ModuleId } from "./store/useAppStore";
+import { ReadingAndRhythm } from "./pages/ReadingAndRhythm";
+import { TheoryAndScales } from "./pages/TheoryAndScales";
+import { Progress } from "./pages/Progress";
+import { Scores } from "./pages/Scores";
+import { PracticeDiary } from "./pages/PracticeDiary";
 
 const MODULES: { id: ModuleId; label: string; icon: string }[] = [
   { id: "reading", label: "Leitura e Ritmo", icon: "♩" },
@@ -9,8 +14,17 @@ const MODULES: { id: ModuleId; label: string; icon: string }[] = [
   { id: "practice", label: "Diário de Prática", icon: "📝" },
 ];
 
+const PAGES: Record<ModuleId, ComponentType> = {
+  reading: ReadingAndRhythm,
+  theory: TheoryAndScales,
+  progress: Progress,
+  library: Scores,
+  practice: PracticeDiary,
+};
+
 export default function App() {
   const { activeModule, setActiveModule } = useAppStore();
+  const Page = PAGES[activeModule];
 
   return (
     <div className="flex h-full" style={{ background: "var(--color-bg-primary)" }}>
@@ -49,15 +63,7 @@ export default function App() {
 
       {/* Main content */}
       <main className="flex-1 overflow-auto p-8">
-        {activeModule === "reading" ? (
-          <AlphaTabViewer />
-        ) : (
-          <div className="flex items-center justify-center h-64">
-            <p className="text-sm" style={{ color: "var(--color-text-dim)" }}>
-              Módulo em construção — chegando na Fase 1.
-            </p>
-          </div>
-        )}
+        <Page />
       </main>
     </div>
   );
