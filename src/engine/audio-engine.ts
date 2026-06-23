@@ -1,3 +1,5 @@
+import { noteToMidi } from "./note-utils";
+
 let _ctx: AudioContext | null = null;
 
 /**
@@ -11,49 +13,13 @@ function getContext(): AudioContext {
   return _ctx;
 }
 
-/** Classes de altura (semitons a partir de C). Aceita naturais, sustenidos e bemóis. */
-const PITCH_CLASS: Record<string, number> = {
-  C: 0,
-  "C#": 1,
-  Db: 1,
-  D: 2,
-  "D#": 3,
-  Eb: 3,
-  E: 4,
-  Fb: 4,
-  "E#": 5,
-  F: 5,
-  "F#": 6,
-  Gb: 6,
-  G: 7,
-  "G#": 8,
-  Ab: 8,
-  A: 9,
-  "A#": 10,
-  Bb: 10,
-  B: 11,
-  Cb: 11,
-  "B#": 0,
-};
-
 /**
  * Converte nome da nota + oitava em frequência (Hz) pelo temperamento igual de 12 tons,
  * com A4 = 440 Hz. Enarmônicos resolvem para a mesma frequência (ex.: "F#" e "Gb").
- * Pura — sem dependência de Web Audio, fácil de testar.
+ * Pura — sem dependência de Web Audio, fácil de testar. Reusa o cálculo de notas de note-utils.
  */
 export function noteToFrequency(noteName: string, octave: number): number {
-  // Normaliza: letra maiúscula + acidente (# ou b) em minúsculo (exceto o 'b' que mantemos).
-  const letter = noteName.charAt(0).toUpperCase();
-  const accidental = noteName.slice(1).replace("♯", "#").replace("♭", "b");
-  const key = letter + accidental;
-
-  const pitchClass = PITCH_CLASS[key];
-  if (pitchClass === undefined) {
-    throw new Error(`Nota inválida: "${noteName}"`);
-  }
-
-  // MIDI: A4 (octave 4, classe 9) = 69. f = 440 * 2^((midi - 69) / 12).
-  const midi = 12 * (octave + 1) + pitchClass;
+  const midi = noteToMidi(`${noteName}${octave}`);
   return 440 * 2 ** ((midi - 69) / 12);
 }
 
