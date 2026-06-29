@@ -38,3 +38,16 @@ body,
   color: var(--color-text-primary);
   font-family: var(--font-family-sans);
 }
+
+/*
+ * Cursores de playback do AlphaTab. Os elementos (.at-cursor-bar / .at-cursor-beat) são
+ * criados SEM cor — o AlphaTab espera que a cor venha do CSS da app. O beat cursor é a linha
+ * vertical fina (~3px) que marca a posição; o bar cursor é o realce do compasso atual.
+ */
+.at-cursor-bar {
+  background-color: rgba(124, 58, 237, 0.16); /* --color-accent-purple translúcido */
+}
+
+.at-cursor-beat {
+  background-color: var(--color-accent-pink);
+}

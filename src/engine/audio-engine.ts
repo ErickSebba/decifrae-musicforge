@@ -63,3 +63,33 @@ export function resetAudioContext(): void {
     _ctx = null;
   }
 }
+
+/** Relógio do AudioContext (segundos), fonte de verdade para timing do modo Tap. */
+export function audioContextTime(): number {
+  return getContext().currentTime;
+}
+
+/**
+ * Clique curto do metrônomo, agendável. `atTimeSec` é um tempo absoluto do AudioContext
+ * (default = agora). Retorna o oscilador para permitir cancelamento (ex.: ao parar).
+ */
+export function playClick(atTimeSec?: number): OscillatorNode {
+  const ctx = getContext();
+  const t = atTimeSec ?? ctx.currentTime;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+
+  osc.type = "square";
+  osc.frequency.setValueAtTime(1500, t);
+
+  // Envelope curtíssimo (clique), sem estalo.
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(0.25, t + 0.005);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(t);
+  osc.stop(t + 0.06);
+  return osc;
+}

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Notation } from "../components/Notation";
+import { TapMode } from "../components/TapMode";
 import { playNoteByName } from "../engine/audio-engine";
 import { pitchClassName } from "../engine/note-utils";
 import {
@@ -11,7 +12,7 @@ import {
 
 const MODES: { id: string; label: string; enabled: boolean }[] = [
   { id: "free", label: "Livre", enabled: true },
-  { id: "tap", label: "Tap", enabled: false },
+  { id: "tap", label: "Tap", enabled: true },
   { id: "timed", label: "Cronometrado", enabled: false },
   { id: "dictation", label: "Ditado", enabled: false },
 ];
@@ -107,7 +108,7 @@ function FreeNoteMode() {
 
 /** Módulo 1 — Leitura e Ritmo. Seletor de modo + modo Livre (sem pressão de tempo). */
 export function ReadingAndRhythm() {
-  const [activeMode] = useState("free");
+  const [activeMode, setActiveMode] = useState("free");
 
   return (
     <div className="flex flex-col gap-6 max-w-2xl">
@@ -127,6 +128,7 @@ export function ReadingAndRhythm() {
             <button
               key={mode.id}
               disabled={!mode.enabled}
+              onClick={() => mode.enabled && setActiveMode(mode.id)}
               className="px-3 py-2 text-sm font-medium transition-colors"
               style={{
                 background: isActive ? "var(--color-accent-purple)" : "var(--color-bg-card)",
@@ -143,6 +145,7 @@ export function ReadingAndRhythm() {
       </div>
 
       {activeMode === "free" && <FreeNoteMode />}
+      {activeMode === "tap" && <TapMode />}
     </div>
   );
 }

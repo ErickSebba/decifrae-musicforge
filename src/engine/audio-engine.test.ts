@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
+  audioContextTime,
   noteToFrequency,
+  playClick,
   playNote,
   playNoteByName,
   resetAudioContext,
@@ -113,5 +115,21 @@ describe("AudioContext suspenso", () => {
     playNote(440);
     expect(createdContexts).toHaveLength(1);
     expect(createdContexts[0].resume).toHaveBeenCalled();
+  });
+});
+
+describe("playClick", () => {
+  it("cria um oscilador de clique curto", () => {
+    const osc = playClick();
+    expect(createdOscillators).toHaveLength(1);
+    expect(osc.type).toBe("square");
+    expect(osc.start).toHaveBeenCalled();
+    expect(osc.stop).toHaveBeenCalled();
+  });
+});
+
+describe("audioContextTime", () => {
+  it("retorna o currentTime do contexto", () => {
+    expect(audioContextTime()).toBe(0); // mock: currentTime = 0
   });
 });
