@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { RhythmStaff, type RhythmStaffHandle } from "./RhythmStaff";
 import { audioContextTime, playClick } from "../engine/audio-engine";
 import {
@@ -16,13 +16,11 @@ import {
 const COUNT_IN_BEATS = 4; // 1 compasso 4/4 de contagem antes da partitura avançar
 const LEAD_SEC = 0.15; // pequeno offset para não agendar cliques no passado
 
-type Phase = "idle" | "countin" | "playing" | "done";
+const BPM_MIN = 40;
+const BPM_MAX = 200;
+const BPM_PRESETS = [60, 80, 100, 120];
 
-const PATTERN = DEFAULT_PATTERN;
-const TEX = patternToTex(PATTERN);
-const TARGETS = expectedTapTimes(PATTERN);
-const DURATION_MS = patternDurationMs(PATTERN);
-const MS_PER_BEAT = msPerBeat(PATTERN.tempo);
+type Phase = "idle" | "countin" | "playing" | "done";
 
 export function TapMode() {
   const staffRef = useRef<RhythmStaffHandle>(null);
@@ -35,9 +33,21 @@ export function TapMode() {
 
   const [ready, setReady] = useState(false);
   const [metronome, setMetronome] = useState(true);
+  const [bpm, setBpm] = useState(DEFAULT_PATTERN.tempo);
   const [phase, setPhaseState] = useState<Phase>("idle");
   const [counts, setCounts] = useState<Record<TapResult, number>>({ perfect: 0, good: 0, miss: 0 });
   const [feedback, setFeedback] = useState("");
+
+  // Tudo derivado do MESMO bpm — tex, alvos, duração e ms/batida ficam sempre coerentes.
+  const pattern = useMemo(() => ({ ...DEFAULT_PATTERN, tempo: bpm }), [bpm]);
+  const tex = useMemo(() => patternToTex(pattern), [pattern]);
+  const targets = useMemo(() => expectedTapTimes(pattern), [pattern]);
+  const durationMs = useMemo(() => patternDurationMs(pattern), [pattern]);
+  const msPerBeatValue = useMemo(() => msPerBeat(bpm), [bpm]);
+
+  // onTap roda num listener ligado uma vez; lê os alvos atuais via ref (evita closure obsoleta).
+  const targetsRef = useRef(targets);
+  targetsRef.current = targets;
 
   const setPhase = (p: Phase) => {
     phaseRef.current = p;
@@ -65,28 +75,29 @@ export function TapMode() {
     setFeedback("");
 
     const countInStart = audioContextTime() + LEAD_SEC;
-    const t0 = countInStart + (COUNT_IN_BEATS * MS_PER_BEAT) / 1000;
+    const t0 = countInStart + (COUNT_IN_BEATS * msPerBeatValue) / 1000;
     t0Ref.current = t0;
     cursorStartLoggedRef.current = false;
 
     // TEMP: confirma que count-in, t0 e alvos estão no mesmo eixo.
     console.log("[Tap] start", {
+      bpm,
       now_s: audioContextTime(),
       countInStart_s: countInStart,
       t0_s: t0,
-      countIn_ms: COUNT_IN_BEATS * MS_PER_BEAT,
-      duration_ms: DURATION_MS,
-      expectedTapTimes_ms: TARGETS,
+      countIn_ms: COUNT_IN_BEATS * msPerBeatValue,
+      duration_ms: durationMs,
+      expectedTapTimes_ms: targets,
     });
 
     // Count-in: sempre audível (independe do toggle do metrônomo).
     scheduledRef.current = [];
     for (let i = 0; i < COUNT_IN_BEATS; i++) {
-      scheduledRef.current.push(playClick(countInStart + (i * MS_PER_BEAT) / 1000));
+      scheduledRef.current.push(playClick(countInStart + (i * msPerBeatValue) / 1000));
     }
     // Pulso do exercício: só se o metrônomo estiver ligado.
     if (metronome) {
-      for (const ct of metronomeClickTimes(PATTERN)) {
+      for (const ct of metronomeClickTimes(pattern)) {
         scheduledRef.current.push(playClick(t0 + ct / 1000));
       }
     }
@@ -110,7 +121,7 @@ export function TapMode() {
         }
         staffRef.current?.updatePosition(elapsed);
         if (phaseRef.current !== "playing") setPhase("playing");
-        if (elapsed >= DURATION_MS + 300) {
+        if (elapsed >= durationMs + 300) {
           stop("done");
           return;
         }
@@ -123,7 +134,7 @@ export function TapMode() {
   const onTap = () => {
     if (phaseRef.current !== "playing") return; // ignora durante count-in/idle/done
     const tapMs = (audioContextTime() - t0Ref.current) * 1000;
-    const { result, index } = classifyTap(tapMs, TARGETS, DEFAULT_WINDOWS, consumedRef.current);
+    const { result, index } = classifyTap(tapMs, targetsRef.current, DEFAULT_WINDOWS, consumedRef.current);
     console.log("[Tap] tap", { tapMs: Math.round(tapMs), result, index }); // TEMP
     if (index >= 0) consumedRef.current.add(index);
     setCounts((c) => ({ ...c, [result]: c[result] + 1 }));
@@ -165,7 +176,52 @@ export function TapMode() {
         Modo Tap · Leitura Rítmica
       </h3>
 
-      <RhythmStaff ref={staffRef} tex={TEX} onReady={() => setReady(true)} />
+      <RhythmStaff ref={staffRef} tex={tex} onReady={() => setReady(true)} />
+
+      {/* BPM: presets + ajuste fino. Recalcula tex/alvos/metrônomo do mesmo tempo.
+          Travado durante a execução — só muda entre exercícios. */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs uppercase tracking-widest" style={{ color: "var(--color-text-dim)" }}>
+          BPM
+        </span>
+        {BPM_PRESETS.map((preset) => (
+          <button
+            key={preset}
+            disabled={running}
+            onClick={(e) => {
+              e.currentTarget.blur();
+              setBpm(preset);
+            }}
+            className="px-2.5 py-1 text-sm font-medium"
+            style={{
+              background: bpm === preset ? "var(--color-accent-purple)" : "var(--color-bg-card)",
+              color: running ? "var(--color-text-dim)" : "#fff",
+              borderRadius: "var(--radius-btn)",
+              cursor: running ? "not-allowed" : "pointer",
+            }}
+          >
+            {preset}
+          </button>
+        ))}
+        <input
+          type="number"
+          min={BPM_MIN}
+          max={BPM_MAX}
+          value={bpm}
+          disabled={running}
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            if (!Number.isNaN(v)) setBpm(Math.min(BPM_MAX, Math.max(BPM_MIN, v)));
+          }}
+          className="w-16 px-2 py-1 text-sm"
+          style={{
+            background: "var(--color-bg-card)",
+            color: "var(--color-text-primary)",
+            borderRadius: "var(--radius-btn)",
+            border: "1px solid var(--color-border)",
+          }}
+        />
+      </div>
 
       <div className="flex items-center gap-3">
         <button

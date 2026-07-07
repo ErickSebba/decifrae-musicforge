@@ -68,8 +68,9 @@ describe("classifyTap", () => {
 });
 
 describe("patternToTex", () => {
-  it("contém a clave de fá e uma nota por evento", () => {
+  it("contém o tempo, a clave de fá e uma nota por evento", () => {
     const tex = patternToTex(FOUR_QUARTERS);
+    expect(tex).toContain("\\tempo 60");
     expect(tex).toContain("\\clef F4");
     expect(tex.match(/c3/g)).toHaveLength(4);
   });

@@ -90,10 +90,14 @@ export function classifyTap(
 
 const DURATION_TOKEN: Record<number, string> = { 2: "2", 1: "4", 0.5: "8", 0.25: "16" };
 
-/** alphaTex do padrão em clave de fá, altura fixa (a altura não importa no Tap). */
+/**
+ * alphaTex do padrão em clave de fá, altura fixa (a altura não importa no Tap).
+ * O `\tempo` precisa casar com `pattern.tempo`: assim o eixo de tempo (ms) do MIDI do AlphaTab
+ * coincide com o nosso clock, e `updatePosition(elapsed)` posiciona o cursor em sincronia.
+ */
 export function patternToTex(pattern: RhythmPattern, pitch = "c3"): string {
   const body = pattern.events
     .map((ev) => `:${DURATION_TOKEN[ev.beats] ?? "4"} ${ev.rest ? "r" : pitch}`)
     .join(" ");
-  return `\\clef F4\n.\n${body}`;
+  return `\\tempo ${pattern.tempo}\n\\clef F4\n.\n${body}`;
 }
