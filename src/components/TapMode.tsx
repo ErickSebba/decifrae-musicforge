@@ -10,7 +10,13 @@ import {
   patternDurationMs,
   type TapResult,
 } from "../engine/rhythm-engine";
-import { computeSummary, levelToPattern, levelToTex, type TapLevel } from "../engine/levels";
+import {
+  computeSummary,
+  levelToPattern,
+  levelToTex,
+  type LevelSummary,
+  type TapLevel,
+} from "../engine/levels";
 
 const COUNT_IN_BEATS = 4; // 1 compasso 4/4 de contagem antes da partitura avançar
 const LEAD_SEC = 0.15; // pequeno offset para não agendar cliques no passado
@@ -33,11 +39,13 @@ function cursorXs(): { line: number | null; bar: number | null } {
 
 interface TapModeProps {
   level: TapLevel;
-  /** Avanço livre nesta etapa; o desbloqueio persistido vem na 3b. */
+  /** Presente só quando o próximo nível existe E está desbloqueado (o pai decide). */
   onNextLevel?: () => void;
+  /** Chamado a cada exercício CONCLUÍDO (fase done) — o pai persiste o resultado. */
+  onFinished?: (summary: LevelSummary) => void;
 }
 
-export function TapMode({ level, onNextLevel }: TapModeProps) {
+export function TapMode({ level, onNextLevel, onFinished }: TapModeProps) {
   const staffRef = useRef<RhythmStaffHandle>(null);
   const rafRef = useRef<number | null>(null);
   const t0Ref = useRef(0); // tempo (s) do contexto onde a partitura começa (após count-in)
@@ -217,6 +225,19 @@ export function TapMode({ level, onNextLevel }: TapModeProps) {
     return () => window.removeEventListener("keydown", handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Ao CONCLUIR um exercício (fase done — "Parar" vai pra idle e não passa aqui), entrega o
+  // resumo pro pai persistir. "Repetir" + nova conclusão dispara de novo (attempts_count
+  // deve contar toda tentativa concluída).
+  const onFinishedRef = useRef(onFinished);
+  onFinishedRef.current = onFinished;
+  useEffect(() => {
+    if (phase !== "done") return;
+    onFinishedRef.current?.(computeSummary(counts, targets.length, level.passThreshold));
+    // counts/targets/level são estáveis enquanto phase === "done" (BPM/nível travados na
+    // execução) — o efeito só dispara na transição de fase.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
 
   // Limpa RAF/cliques ao desmontar.
   useEffect(() => {

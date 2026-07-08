@@ -78,6 +78,32 @@ export function computeSummary(
   return { hits, ratio, passed: ratio >= passThreshold };
 }
 
+/** Melhor resultado persistido de um nível (linha de tap_level_progress, já tipada). */
+export interface ProgressRecord {
+  levelId: string;
+  bestRatio: number;
+  passed: boolean;
+  attemptsCount: number;
+  lastAttemptedAt: string;
+}
+
+/**
+ * Desbloqueio linear derivado em runtime (sem coluna "unlocked" no banco — uma fonte de
+ * verdade só): nível 0 sempre aberto; nível N aberto se N−1 tem `passed`. Como `passed`
+ * nunca regride na persistência, o resultado é estável entre sessões.
+ */
+export function deriveUnlockedLevels(
+  levelOrder: string[],
+  progress: ProgressRecord[]
+): Set<string> {
+  const passedIds = new Set(progress.filter((p) => p.passed).map((p) => p.levelId));
+  const unlocked = new Set<string>();
+  for (let i = 0; i < levelOrder.length; i++) {
+    if (i === 0 || passedIds.has(levelOrder[i - 1])) unlocked.add(levelOrder[i]);
+  }
+  return unlocked;
+}
+
 const TS_4_4: TimeSignature = { count: 4, unit: 4 };
 
 // Atalhos de leitura para os padrões curados.

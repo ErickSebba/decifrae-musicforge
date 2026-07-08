@@ -2,10 +2,12 @@ import { describe, it, expect } from "vitest";
 import {
   CURATED_LEVELS,
   computeSummary,
+  deriveUnlockedLevels,
   levelBars,
   levelRepeats,
   levelToPattern,
   levelToTex,
+  type ProgressRecord,
 } from "./levels";
 import { expectedTapTimes, patternDurationMs, splitIntoBars } from "./rhythm-engine";
 
@@ -92,6 +94,44 @@ describe("levelToTex", () => {
   it("semibreve vira token :1", () => {
     const tex = levelToTex(CURATED_LEVELS[2]); // nível com semibreves
     expect(tex).toContain(":1 c3");
+  });
+});
+
+describe("deriveUnlockedLevels — desbloqueio linear derivado", () => {
+  const ORDER = ["a", "b", "c", "d"];
+  const rec = (levelId: string, passed: boolean): ProgressRecord => ({
+    levelId,
+    bestRatio: passed ? 0.9 : 0.5,
+    passed,
+    attemptsCount: 1,
+    lastAttemptedAt: "2026-07-07T00:00:00.000Z",
+  });
+
+  it("sem progresso, só o primeiro nível abre", () => {
+    expect(deriveUnlockedLevels(ORDER, [])).toEqual(new Set(["a"]));
+  });
+
+  it("passados em sequência abrem o seguinte de cada um", () => {
+    const unlocked = deriveUnlockedLevels(ORDER, [rec("a", true), rec("b", true)]);
+    expect(unlocked).toEqual(new Set(["a", "b", "c"]));
+    expect(unlocked.has("d")).toBe(false);
+  });
+
+  it("todos passados → tudo aberto", () => {
+    const all = ORDER.map((id) => rec(id, true));
+    expect(deriveUnlockedLevels(ORDER, all)).toEqual(new Set(ORDER));
+  });
+
+  it("tentativa reprovada (passed=false) não desbloqueia o seguinte", () => {
+    expect(deriveUnlockedLevels(ORDER, [rec("a", false)])).toEqual(new Set(["a"]));
+  });
+
+  it("ids desconhecidos no progresso são ignorados", () => {
+    expect(deriveUnlockedLevels(ORDER, [rec("zzz", true)])).toEqual(new Set(["a"]));
+  });
+
+  it("ordem vazia → nada aberto", () => {
+    expect(deriveUnlockedLevels([], [rec("a", true)])).toEqual(new Set());
   });
 });
 

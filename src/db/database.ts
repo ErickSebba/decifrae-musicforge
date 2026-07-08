@@ -14,6 +14,18 @@ export async function initDb(): Promise<Database> {
     )
   `);
 
+  // Melhor resultado por nível do modo Tap (3b). Sem coluna "unlocked": o desbloqueio é
+  // derivado em runtime a partir de `passed` (deriveUnlockedLevels em engine/levels.ts).
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS tap_level_progress (
+      level_id          TEXT PRIMARY KEY,
+      best_ratio        REAL NOT NULL,
+      passed            INTEGER NOT NULL DEFAULT 0,
+      attempts_count    INTEGER NOT NULL DEFAULT 0,
+      last_attempted_at TEXT NOT NULL
+    )
+  `);
+
   _db = db;
   return db;
 }

@@ -1,7 +1,13 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Notation } from "../components/Notation";
 import { TapMode } from "../components/TapMode";
-import { CURATED_LEVELS } from "../engine/levels";
+import {
+  CURATED_LEVELS,
+  deriveUnlockedLevels,
+  type LevelSummary,
+  type ProgressRecord,
+} from "../engine/levels";
+import { getLevelProgress, saveLevelResult } from "../db/level-progress";
 import { playNoteByName } from "../engine/audio-engine";
 import { pitchClassName } from "../engine/note-utils";
 import {
@@ -20,20 +26,61 @@ const MODES: { id: string; label: string; enabled: boolean }[] = [
 
 const ANSWER_LETTERS = ["C", "D", "E", "F", "G", "A", "B"];
 
-/** Seleção de nível do Tap (sem travas — o desbloqueio persistido vem na 3b). */
+const LEVEL_ORDER = CURATED_LEVELS.map((lv) => lv.id);
+
+/** Seleção de nível do Tap com desbloqueio linear persistido (3b). */
 function TapSection() {
   const [levelIndex, setLevelIndex] = useState(0);
+  const [progress, setProgress] = useState<ProgressRecord[]>([]);
+
+  // Desbloqueio derivado em runtime do `passed` dos anteriores — nada de estado próprio.
+  const unlocked = useMemo(() => deriveUnlockedLevels(LEVEL_ORDER, progress), [progress]);
+  const byLevel = useMemo(
+    () => new Map(progress.map((p) => [p.levelId, p])),
+    [progress]
+  );
+
+  // Carga inicial: lê o progresso e posiciona a seleção no "nível atual" (primeiro
+  // desbloqueado ainda não passado; se todos passados, o último).
+  useEffect(() => {
+    let cancelled = false;
+    getLevelProgress().then((records) => {
+      if (cancelled) return;
+      setProgress(records);
+      const open = deriveUnlockedLevels(LEVEL_ORDER, records);
+      const passed = new Set(records.filter((p) => p.passed).map((p) => p.levelId));
+      const current = CURATED_LEVELS.findIndex((lv) => open.has(lv.id) && !passed.has(lv.id));
+      setLevelIndex(current >= 0 ? current : CURATED_LEVELS.length - 1);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const level = CURATED_LEVELS[levelIndex];
-  const hasNext = levelIndex < CURATED_LEVELS.length - 1;
+  const nextLevel = CURATED_LEVELS[levelIndex + 1];
+  const nextUnlocked = nextLevel !== undefined && unlocked.has(nextLevel.id);
+
+  // Persiste a tentativa concluída e relê o progresso — check/%, cadeados e o botão
+  // "Próximo nível" do resumo atualizam na hora se o nível acabou de ser passado.
+  const onFinished = (summary: LevelSummary) => {
+    saveLevelResult(level.id, summary.ratio, summary.passed)
+      .then(getLevelProgress)
+      .then(setProgress);
+  };
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap gap-2">
         {CURATED_LEVELS.map((lv, i) => {
           const isActive = i === levelIndex;
+          const isUnlocked = unlocked.has(lv.id);
+          const record = byLevel.get(lv.id);
+          const showBest = record?.passed ? ` ✓ ${Math.round(record.bestRatio * 100)}%` : "";
           return (
             <button
               key={lv.id}
+              disabled={!isUnlocked}
               onClick={(e) => {
                 e.currentTarget.blur();
                 setLevelIndex(i);
@@ -43,9 +90,12 @@ function TapSection() {
                 background: isActive ? "var(--color-accent-purple)" : "var(--color-bg-card)",
                 color: isActive ? "#fff" : "var(--color-text-muted)",
                 borderRadius: "var(--radius-btn)",
+                opacity: isUnlocked ? 1 : 0.45,
+                cursor: isUnlocked ? "pointer" : "not-allowed",
               }}
+              aria-label={isUnlocked ? lv.name : `${lv.name} (bloqueado)`}
             >
-              {i + 1}. {lv.name}
+              {isUnlocked ? `${i + 1}. ${lv.name}${showBest}` : `🔒 ${i + 1}. ${lv.name}`}
             </button>
           );
         })}
@@ -55,7 +105,8 @@ function TapSection() {
       <TapMode
         key={level.id}
         level={level}
-        onNextLevel={hasNext ? () => setLevelIndex(levelIndex + 1) : undefined}
+        onFinished={onFinished}
+        onNextLevel={nextUnlocked ? () => setLevelIndex(levelIndex + 1) : undefined}
       />
     </div>
   );
