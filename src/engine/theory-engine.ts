@@ -315,6 +315,76 @@ export function modesOfMajor(majorTonic: string): Record<ModeId, string[]> {
 }
 
 // ---------------------------------------------------------------------------
+// Campo harmônico (tríades diatônicas) — sub-etapa 2.1b
+// ---------------------------------------------------------------------------
+
+export type TriadQuality = "major" | "minor" | "diminished" | "augmented";
+
+export const TRIAD_QUALITY_LABELS: Record<TriadQuality, string> = {
+  major: "maior",
+  minor: "menor",
+  diminished: "diminuta",
+  augmented: "aumentada",
+};
+
+export type KeyMode = "major" | "naturalMinor";
+
+export interface Triad {
+  /** Grau da escala, 1..7. */
+  degree: number;
+  /** [fundamental, terça, quinta] — nomes grafados, tirados DIRETO da escala. */
+  notes: [string, string, string];
+  quality: TriadQuality;
+  /** Cifra: "F", "Gm", "E°", "C+". */
+  symbol: string;
+  /** Algarismo romano: "IV", "ii", "vii°". */
+  roman: string;
+}
+
+const TRIAD_SUFFIX: Record<TriadQuality, string> = {
+  major: "",
+  minor: "m",
+  diminished: "°",
+  augmented: "+",
+};
+
+const ROMAN_NUMERALS = ["I", "II", "III", "IV", "V", "VI", "VII"];
+
+/**
+ * Qualidade pelos intervalos REAIS fundamental→terça e fundamental→quinta
+ * (via intervalBetween — nada de tabela de qualidades por grau).
+ */
+function triadQuality(root: string, third: string, fifth: string): TriadQuality {
+  const t = intervalBetween(root, third);
+  const f = intervalBetween(root, fifth);
+  if (t.number === 3 && f.number === 5) {
+    if (t.quality === "M" && f.quality === "P") return "major";
+    if (t.quality === "m" && f.quality === "P") return "minor";
+    if (t.quality === "m" && f.quality === "d") return "diminished";
+    if (t.quality === "M" && f.quality === "A") return "augmented";
+  }
+  throw new Error(`Tríade sem qualidade nomeável: ${root}-${third}-${fifth}`);
+}
+
+/**
+ * As 7 tríades diatônicas da tonalidade. As notas de cada grau são os elementos
+ * 1/3/5 do array da escala JÁ calculada (empilhamento em terças por índice) —
+ * a grafia correta da escala se propaga por construção: em F maior o IV é
+ * Bb–D–F, nunca A#–D–F nem Bb–D–Gb.
+ */
+export function diatonicTriads(tonic: string, mode: KeyMode): Triad[] {
+  const scale = mode === "major" ? majorScale(tonic) : naturalMinorScale(tonic);
+  return scale.map((root, i) => {
+    const notes: [string, string, string] = [root, scale[(i + 2) % 7], scale[(i + 4) % 7]];
+    const quality = triadQuality(notes[0], notes[1], notes[2]);
+    const upper = quality === "major" || quality === "augmented";
+    const base = ROMAN_NUMERALS[i];
+    const roman = (upper ? base : base.toLowerCase()) + (quality === "augmented" ? "+" : quality === "diminished" ? "°" : "");
+    return { degree: i + 1, notes, quality, symbol: root + TRIAD_SUFFIX[quality], roman };
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Central de Conteúdo (Módulo 3.4) — SÓ o tipo; persistência é da sub-etapa 2.4
 // ---------------------------------------------------------------------------
 

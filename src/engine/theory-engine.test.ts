@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  diatonicTriads,
   spell,
   spelledName,
   spelledPitchClass,
@@ -268,5 +269,95 @@ describe("modos gregorianos", () => {
       expect(modeScale("A", mode)[0]).toBe("A");
       expect(modeScale("Bb", mode)[0]).toBe("Bb");
     }
+  });
+});
+
+describe("diatonicTriads — campo harmônico maior", () => {
+  it("C maior: notas, cifra e romano grau a grau (vii° = B°)", () => {
+    expect(diatonicTriads("C", "major")).toEqual([
+      { degree: 1, notes: ["C", "E", "G"], quality: "major", symbol: "C", roman: "I" },
+      { degree: 2, notes: ["D", "F", "A"], quality: "minor", symbol: "Dm", roman: "ii" },
+      { degree: 3, notes: ["E", "G", "B"], quality: "minor", symbol: "Em", roman: "iii" },
+      { degree: 4, notes: ["F", "A", "C"], quality: "major", symbol: "F", roman: "IV" },
+      { degree: 5, notes: ["G", "B", "D"], quality: "major", symbol: "G", roman: "V" },
+      { degree: 6, notes: ["A", "C", "E"], quality: "minor", symbol: "Am", roman: "vi" },
+      { degree: 7, notes: ["B", "D", "F"], quality: "diminished", symbol: "B°", roman: "vii°" },
+    ]);
+  });
+
+  it("F maior: IV = Bb–D–F (grafia herdada da escala, nunca A# ou Gb)", () => {
+    const triads = diatonicTriads("F", "major");
+    expect(triads[3]).toEqual({
+      degree: 4,
+      notes: ["Bb", "D", "F"],
+      quality: "major",
+      symbol: "Bb",
+      roman: "IV",
+    });
+    expect(triads.map((t) => t.symbol)).toEqual(["F", "Gm", "Am", "Bb", "C", "Dm", "E°"]);
+  });
+
+  it("D maior (tônica com sustenidos): cifras e vii° = C#°", () => {
+    const triads = diatonicTriads("D", "major");
+    expect(triads.map((t) => t.symbol)).toEqual(["D", "Em", "F#m", "G", "A", "Bm", "C#°"]);
+    expect(triads[6].notes).toEqual(["C#", "E", "G"]);
+    expect(triads[6].roman).toBe("vii°");
+  });
+});
+
+describe("diatonicTriads — campo harmônico menor natural", () => {
+  it("Lá menor: cifras e romanos, com ii° e VII", () => {
+    const triads = diatonicTriads("A", "naturalMinor");
+    expect(triads.map((t) => t.symbol)).toEqual(["Am", "B°", "C", "Dm", "Em", "F", "G"]);
+    expect(triads.map((t) => t.roman)).toEqual(["i", "ii°", "III", "iv", "v", "VI", "VII"]);
+    expect(triads[1].notes).toEqual(["B", "D", "F"]);
+    expect(triads[6].notes).toEqual(["G", "B", "D"]);
+  });
+
+  it("Dó menor: grafia bemol vinda da escala (Eb, Ab, Bb)", () => {
+    const triads = diatonicTriads("C", "naturalMinor");
+    expect(triads.map((t) => t.symbol)).toEqual(["Cm", "D°", "Eb", "Fm", "Gm", "Ab", "Bb"]);
+    expect(triads[2].notes).toEqual(["Eb", "G", "Bb"]);
+    expect(triads[5].notes).toEqual(["Ab", "C", "Eb"]);
+  });
+
+  it("Fá# menor (tônica acidentada)", () => {
+    const triads = diatonicTriads("F#", "naturalMinor");
+    expect(triads.map((t) => t.symbol)).toEqual(["F#m", "G#°", "A", "Bm", "C#m", "D", "E"]);
+  });
+});
+
+describe("diatonicTriads — invariantes sobre as 12 tônicas", () => {
+  const tonics = ["C", "G", "D", "A", "E", "B", "F#", "F", "Bb", "Eb", "Ab", "Db"];
+
+  it("padrão de qualidades derivado por intervalos: maior [M m m M M m dim]", () => {
+    for (const tonic of tonics) {
+      expect(diatonicTriads(tonic, "major").map((t) => t.quality)).toEqual([
+        "major", "minor", "minor", "major", "major", "minor", "diminished",
+      ]);
+    }
+  });
+
+  it("padrão de qualidades do menor natural [m dim M m m M M]", () => {
+    for (const tonic of tonics) {
+      expect(diatonicTriads(tonic, "naturalMinor").map((t) => t.quality)).toEqual([
+        "minor", "diminished", "major", "minor", "minor", "major", "major",
+      ]);
+    }
+  });
+
+  it("notas da tríade são IDÊNTICAS aos graus 1/3/5 do array da escala (não só enarmônicas)", () => {
+    for (const tonic of tonics) {
+      const scale = majorScale(tonic);
+      diatonicTriads(tonic, "major").forEach((triad, i) => {
+        expect(triad.notes).toEqual([scale[i], scale[(i + 2) % 7], scale[(i + 4) % 7]]);
+        expect(triad.notes[0]).toBe(scale[i]);
+        expect(triad.degree).toBe(i + 1);
+      });
+    }
+  });
+
+  it("tônica inválida propaga erro", () => {
+    expect(() => diatonicTriads("H", "major")).toThrow();
   });
 });
