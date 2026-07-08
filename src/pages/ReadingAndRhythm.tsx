@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Notation } from "../components/Notation";
 import { TapMode } from "../components/TapMode";
+import { TimedNoteMode } from "../components/TimedNoteMode";
 import {
   CURATED_LEVELS,
   deriveUnlockedLevels,
@@ -20,7 +21,7 @@ import {
 const MODES: { id: string; label: string; enabled: boolean }[] = [
   { id: "free", label: "Livre", enabled: true },
   { id: "tap", label: "Tap", enabled: true },
-  { id: "timed", label: "Cronometrado", enabled: false },
+  { id: "timed", label: "Cronometrado", enabled: true },
   { id: "dictation", label: "Ditado", enabled: false },
 ];
 
@@ -239,6 +240,7 @@ export function ReadingAndRhythm() {
 
       {activeMode === "free" && <FreeNoteMode />}
       {activeMode === "tap" && <TapSection />}
+      {activeMode === "timed" && <TimedNoteMode />}
     </div>
   );
 }

@@ -55,3 +55,82 @@ export function noteToBassTex(writtenNote: string): string {
 export function soundingOctave(writtenNote: string): number {
   return parseNote(writtenNote).octave - 1;
 }
+
+// ---------------------------------------------------------------------------
+// Modo Cronometrado (1.6a): tempo limite por nota + rodada fixa/contínua.
+// Sem persistência (resultado dura a sessão) — tabela de resultados fica pro Módulo 3.
+// ---------------------------------------------------------------------------
+
+export type Difficulty = "facil" | "medio" | "dificil";
+
+/**
+ * Segundos por nota, por dificuldade. Tabela curada (mais fácil de recalibrar que uma
+ * curva): Fácil 8s = iniciante decodificando linha/espaço com calma; Médio 5s = leitura
+ * deliberada sem contar linhas do zero; Difícil 3s = beira o reconhecimento imediato
+ * (meta didática da leitura à primeira vista).
+ */
+const TIME_LIMIT_SEC: Record<Difficulty, number> = { facil: 8, medio: 5, dificil: 3 };
+
+export function timeLimitForDifficulty(difficulty: Difficulty): number {
+  return TIME_LIMIT_SEC[difficulty];
+}
+
+export type RoundFormat = { kind: "fixed"; total: number } | { kind: "continuous" };
+
+export type AnswerOutcome = "correct" | "wrong" | "timeout";
+
+export interface TimedRoundState {
+  format: RoundFormat;
+  answered: number;
+  correct: number;
+  /** Resposta errada (leitura) — separado de `timeouts` (velocidade) no resumo. */
+  wrong: number;
+  timeouts: number;
+  streak: number;
+  bestStreak: number;
+  finished: boolean;
+}
+
+export function createTimedRound(format: RoundFormat): TimedRoundState {
+  return {
+    format,
+    answered: 0,
+    correct: 0,
+    wrong: 0,
+    timeouts: 0,
+    streak: 0,
+    bestStreak: 0,
+    finished: false,
+  };
+}
+
+/**
+ * Aplica um resultado à rodada (imutável). `correct` estende o streak; `wrong`/`timeout`
+ * zeram (bestStreak preserva o recorde). Término: fixa ao responder a N-ésima nota;
+ * contínua em qualquer resultado != correct (parada manual é a UI parar de alimentar o
+ * reducer). Em estado `finished` é no-op — guarda contra double-fire da UI.
+ */
+export function applyOutcome(state: TimedRoundState, outcome: AnswerOutcome): TimedRoundState {
+  if (state.finished) return state;
+
+  const streak = outcome === "correct" ? state.streak + 1 : 0;
+  const answered = state.answered + 1;
+  const finished =
+    state.format.kind === "fixed" ? answered >= state.format.total : outcome !== "correct";
+
+  return {
+    ...state,
+    answered,
+    correct: state.correct + (outcome === "correct" ? 1 : 0),
+    wrong: state.wrong + (outcome === "wrong" ? 1 : 0),
+    timeouts: state.timeouts + (outcome === "timeout" ? 1 : 0),
+    streak,
+    bestStreak: Math.max(state.bestStreak, streak),
+    finished,
+  };
+}
+
+/** Fração de acertos sobre o respondido (0 se nada respondido). */
+export function roundAccuracy(state: TimedRoundState): number {
+  return state.answered > 0 ? state.correct / state.answered : 0;
+}
