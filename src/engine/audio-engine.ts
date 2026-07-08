@@ -24,15 +24,20 @@ export function noteToFrequency(noteName: string, octave: number): number {
 }
 
 /**
- * Toca uma nota senoidal na frequência dada, por `durationSec`. Envelope com attack e
- * release curtos via GainNode para evitar o "click" de ligar/desligar o oscilador.
+ * Tom senoidal agendável: como playNote, mas com início em `atTimeSec` (tempo absoluto do
+ * AudioContext, default = agora) e retornando o oscilador pra cancelamento — mesmo contrato
+ * do playClick. Usado pelo Ditado pros onsets das notas (grave/longo vs clique agudo/curto).
  */
-export function playNote(frequencyHz: number, durationSec = 1.5): void {
+export function playTone(
+  frequencyHz: number,
+  durationSec = 1.5,
+  atTimeSec?: number
+): OscillatorNode {
   const ctx = getContext();
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
 
-  const t0 = ctx.currentTime;
+  const t0 = atTimeSec ?? ctx.currentTime;
   const attack = 0.01;
   const peak = 0.3;
   const floor = 0.0001;
@@ -49,6 +54,15 @@ export function playNote(frequencyHz: number, durationSec = 1.5): void {
   gain.connect(ctx.destination);
   osc.start(t0);
   osc.stop(t0 + durationSec);
+  return osc;
+}
+
+/**
+ * Toca uma nota senoidal na frequência dada, por `durationSec`. Envelope com attack e
+ * release curtos via GainNode para evitar o "click" de ligar/desligar o oscilador.
+ */
+export function playNote(frequencyHz: number, durationSec = 1.5): void {
+  playTone(frequencyHz, durationSec);
 }
 
 /** Toca uma nota pelo nome + oitava (ex.: playNoteByName("E", 1) para a corda E1). */

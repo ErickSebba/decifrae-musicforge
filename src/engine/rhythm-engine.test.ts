@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   classifyTap,
+  dictationSchedule,
   expectedTapTimes,
   metronomeClickTimes,
   patternDurationMs,
@@ -12,6 +13,33 @@ const FOUR_QUARTERS: RhythmPattern = {
   tempo: 60, // 1000 ms/batida
   events: [{ beats: 1 }, { beats: 1 }, { beats: 1 }, { beats: 1 }],
 };
+
+describe("dictationSchedule", () => {
+  it("lead-in gera N pulsos antes do zero do padrão e desloca notas e grade", () => {
+    const s = dictationSchedule(FOUR_QUARTERS, 4); // 60 BPM → 1000 ms/batida
+    // 4 pulsos de lead-in + 4 da grade do padrão, deslocados 4000 ms.
+    expect(s.pulseTimesMs).toEqual([0, 1000, 2000, 3000, 4000, 5000, 6000, 7000]);
+    expect(s.noteTimesMs).toEqual([4000, 5000, 6000, 7000]);
+    expect(s.totalMs).toBe(8000);
+  });
+
+  it("pausas não geram nota (mas o pulso de fundo continua)", () => {
+    const withRest: RhythmPattern = {
+      tempo: 60,
+      events: [{ beats: 1 }, { beats: 1, rest: true }, { beats: 1 }],
+    };
+    const s = dictationSchedule(withRest, 3);
+    expect(s.noteTimesMs).toEqual([3000, 5000]); // 2ª batida do padrão é pausa
+    expect(s.pulseTimesMs).toHaveLength(3 + 3); // lead-in + grade
+  });
+
+  it("leadInBeats = 0 degenera pros tempos originais do padrão", () => {
+    const s = dictationSchedule(FOUR_QUARTERS, 0);
+    expect(s.noteTimesMs).toEqual(expectedTapTimes(FOUR_QUARTERS));
+    expect(s.pulseTimesMs).toEqual(metronomeClickTimes(FOUR_QUARTERS));
+    expect(s.totalMs).toBe(patternDurationMs(FOUR_QUARTERS));
+  });
+});
 
 describe("expectedTapTimes", () => {
   it("60 BPM, 4 semínimas → [0, 1000, 2000, 3000]", () => {

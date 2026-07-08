@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Notation } from "../components/Notation";
 import { TapMode } from "../components/TapMode";
 import { TimedNoteMode } from "../components/TimedNoteMode";
+import { DictationMode } from "../components/DictationMode";
 import {
   CURATED_LEVELS,
   deriveUnlockedLevels,
@@ -22,7 +23,7 @@ const MODES: { id: string; label: string; enabled: boolean }[] = [
   { id: "free", label: "Livre", enabled: true },
   { id: "tap", label: "Tap", enabled: true },
   { id: "timed", label: "Cronometrado", enabled: true },
-  { id: "dictation", label: "Ditado", enabled: false },
+  { id: "dictation", label: "Ditado", enabled: true },
 ];
 
 const ANSWER_LETTERS = ["C", "D", "E", "F", "G", "A", "B"];
@@ -109,6 +110,45 @@ function TapSection() {
         onFinished={onFinished}
         onNextLevel={nextUnlocked ? () => setLevelIndex(levelIndex + 1) : undefined}
       />
+    </div>
+  );
+}
+
+/**
+ * Seleção de nível do Ditado: mesmos perfis do Tap, SEM travas — é treino de ouvido livre;
+ * as travas persistidas medem progresso do Tap, não deste modo (que não persiste nada).
+ */
+function DictationSection() {
+  const [levelIndex, setLevelIndex] = useState(0);
+  const level = CURATED_LEVELS[levelIndex];
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap gap-2">
+        {CURATED_LEVELS.map((lv, i) => {
+          const isActive = i === levelIndex;
+          return (
+            <button
+              key={lv.id}
+              onClick={(e) => {
+                e.currentTarget.blur();
+                setLevelIndex(i);
+              }}
+              className="px-3 py-1.5 text-sm font-medium"
+              style={{
+                background: isActive ? "var(--color-accent-purple)" : "var(--color-bg-card)",
+                color: isActive ? "#fff" : "var(--color-text-muted)",
+                borderRadius: "var(--radius-btn)",
+              }}
+            >
+              {i + 1}. {lv.name}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* key remonta o DictationMode ao trocar de nível (novo padrão, fases zeradas). */}
+      <DictationMode key={level.id} level={level} />
     </div>
   );
 }
@@ -241,6 +281,7 @@ export function ReadingAndRhythm() {
       {activeMode === "free" && <FreeNoteMode />}
       {activeMode === "tap" && <TapSection />}
       {activeMode === "timed" && <TimedNoteMode />}
+      {activeMode === "dictation" && <DictationSection />}
     </div>
   );
 }

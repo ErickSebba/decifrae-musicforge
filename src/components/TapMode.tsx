@@ -1,15 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RhythmStaff, type RhythmStaffHandle } from "./RhythmStaff";
-import { audioContextTime, playClick } from "../engine/audio-engine";
+import { audioContextTime } from "../engine/audio-engine";
 import {
-  DEFAULT_WINDOWS,
   beatsPerBar,
-  classifyTap,
   expectedTapTimes,
-  metronomeClickTimes,
   msPerBeat,
   patternDurationMs,
-  type TapResult,
 } from "../engine/rhythm-engine";
 import { FIGURE_LABELS, generateLevelPass } from "../engine/rhythm-generator";
 import {
@@ -19,14 +15,11 @@ import {
   type LevelSummary,
   type TapLevel,
 } from "../engine/levels";
-
-const LEAD_SEC = 0.15; // pequeno offset para não agendar cliques no passado
+import { useTapRun } from "../hooks/useTapRun";
 
 const BPM_MIN = 40;
 const BPM_MAX = 200;
 const BPM_PRESETS = [60, 80, 100, 120];
-
-type Phase = "idle" | "countin" | "playing" | "done";
 
 // TEMP diag: translateX atual da linha (.at-cursor-beat) e do retângulo (.at-cursor-bar).
 function cursorXs(): { line: number | null; bar: number | null } {
@@ -48,11 +41,6 @@ interface TapModeProps {
 
 export function TapMode({ level, onNextLevel, onFinished }: TapModeProps) {
   const staffRef = useRef<RhythmStaffHandle>(null);
-  const rafRef = useRef<number | null>(null);
-  const t0Ref = useRef(0); // tempo (s) do contexto onde a partitura começa (após count-in)
-  const consumedRef = useRef<Set<number>>(new Set());
-  const scheduledRef = useRef<OscillatorNode[]>([]);
-  const phaseRef = useRef<Phase>("idle");
   const cursorStartLoggedRef = useRef(false); // TEMP: log do início real do cursor
   const countinLineXRef = useRef<number | null>(null); // TEMP diag: x da linha no início do count-in
   const driftLoggedRef = useRef(false); // TEMP diag
@@ -61,13 +49,9 @@ export function TapMode({ level, onNextLevel, onFinished }: TapModeProps) {
   const [ready, setReady] = useState(false);
   const [metronome, setMetronome] = useState(true);
   const [bpm, setBpm] = useState(level.suggestedBpm);
-  const [phase, setPhaseState] = useState<Phase>("idle");
-  const [counts, setCounts] = useState<Record<TapResult, number>>({ perfect: 0, good: 0, miss: 0 });
-  const [feedback, setFeedback] = useState("");
 
   // Passada do gerador (3c-1): nasce no mount e é re-sorteada a CADA start() — Iniciar e
-  // Repetir são tentativas novas, logo padrões novos. As camadas abaixo (levelToPattern,
-  // tex, alvos) recebem a passada como parâmetro e não sabem que ela foi gerada.
+  // Repetir são tentativas novas, logo padrões novos.
   const [passEvents, setPassEvents] = useState(() => generateLevelPass(level));
 
   // Count-in de 1 compasso na fórmula do nível (4 cliques em 4/4, 3 em 3/4).
@@ -78,93 +62,12 @@ export function TapMode({ level, onNextLevel, onFinished }: TapModeProps) {
   const pattern = useMemo(() => levelToPattern(level, passEvents, bpm), [level, passEvents, bpm]);
   const tex = useMemo(() => levelToTex(level, passEvents, bpm), [level, passEvents, bpm]);
   const targets = useMemo(() => expectedTapTimes(pattern), [pattern]);
-  const durationMs = useMemo(() => patternDurationMs(pattern), [pattern]);
   const msPerBeatValue = useMemo(() => msPerBeat(bpm), [bpm]);
 
-  // loop/onTap rodam em closures ligadas no start(); leem alvos/duração via ref. Os refs são
-  // reescritos DENTRO do start() com os valores da passada recém-gerada (o estado só chega
-  // no re-render seguinte) e re-sincronizados a cada render (convergem pros mesmos valores).
-  const targetsRef = useRef(targets);
-  targetsRef.current = targets;
-  const durationMsRef = useRef(durationMs);
-  durationMsRef.current = durationMs;
-
-  const setPhase = (p: Phase) => {
-    phaseRef.current = p;
-    setPhaseState(p);
-  };
-
-  const stop = (finalPhase: Phase) => {
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    rafRef.current = null;
-    staffRef.current?.pause();
-    for (const osc of scheduledRef.current) {
-      try {
-        osc.stop();
-      } catch {
-        /* já parado */
-      }
-    }
-    scheduledRef.current = [];
-    setPhase(finalPhase);
-  };
-
-  const start = () => {
-    consumedRef.current = new Set();
-    setCounts({ perfect: 0, good: 0, miss: 0 });
-    setFeedback("");
-
-    // Tentativa nova = padrão novo (3c-1). Tudo desta tentativa deriva da passada gerada
-    // AQUI (síncrono, em locais + refs): o setPassEvents só re-renderiza a partitura — o
-    // clock e os alvos não dependem do render (o desenho pode chegar frames depois, durante
-    // o count-in, sem afetar a sincronia).
-    const newPass = generateLevelPass(level);
-    const newPattern = levelToPattern(level, newPass, bpm);
-    const newTargets = expectedTapTimes(newPattern);
-    const newDurationMs = patternDurationMs(newPattern);
-    setPassEvents(newPass);
-    targetsRef.current = newTargets;
-    durationMsRef.current = newDurationMs;
-
-    const countInStart = audioContextTime() + LEAD_SEC;
-    const t0 = countInStart + (countInBeats * msPerBeatValue) / 1000;
-    t0Ref.current = t0;
-    cursorStartLoggedRef.current = false;
-    countinLineXRef.current = null;
-    driftLoggedRef.current = false;
-    lastAxisLogRef.current = 0;
-
-    // TEMP: confirma que count-in, t0 e alvos estão no mesmo eixo.
-    console.log("[Tap] start", {
-      bpm,
-      now_s: audioContextTime(),
-      countInStart_s: countInStart,
-      t0_s: t0,
-      countIn_ms: countInBeats * msPerBeatValue,
-      duration_ms: newDurationMs,
-      expectedTapTimes_ms: newTargets,
-    });
-
-    // Count-in: sempre audível (independe do toggle do metrônomo).
-    scheduledRef.current = [];
-    for (let i = 0; i < countInBeats; i++) {
-      scheduledRef.current.push(playClick(countInStart + (i * msPerBeatValue) / 1000));
-    }
-    // Pulso do exercício: só se o metrônomo estiver ligado.
-    if (metronome) {
-      for (const ct of metronomeClickTimes(newPattern)) {
-        scheduledRef.current.push(playClick(t0 + ct / 1000));
-      }
-    }
-
-    // NÃO chamamos staff.play(): com o player em Paused, o AlphaTab reposiciona a linha a
-    // CADA updatePosition com interpolação por tick (forceUpdate), sem a transição CSS do
-    // modo Playing — a linha fica 100% travada no nosso clock (fix dos bugs de sincronia:
-    // linha andando sozinha no count-in e adiantada em relação ao retângulo de compasso).
-    setPhase("countin");
-
-    const loop = () => {
-      const elapsed = (audioContextTime() - t0Ref.current) * 1000;
+  // Mecânica (count-in, clock, taps) no hook compartilhado com o Ditado; o que é do Tap —
+  // cursor da partitura e logs de diagnóstico — entra pelos callbacks.
+  const run = useTapRun({
+    onFrame: (elapsed) => {
       if (elapsed < 0) {
         staffRef.current?.updatePosition(0); // cursor parado no início durante o count-in
 
@@ -183,73 +86,82 @@ export function TapMode({ level, onNextLevel, onFinished }: TapModeProps) {
             });
           }
         }
-      } else {
-        if (!cursorStartLoggedRef.current) {
-          cursorStartLoggedRef.current = true;
-          // TEMP: o cursor começa a andar aqui — deve coincidir com t0 e com o alvo[0]=0.
-          console.log("[Tap] cursor começou a andar", {
-            now_s: audioContextTime(),
-            t0_s: t0Ref.current,
-            elapsed_ms: elapsed,
-          });
-        }
-        staffRef.current?.updatePosition(elapsed);
-        if (phaseRef.current !== "playing") setPhase("playing");
-
-        // TEMP diag (bug 2): a cada ~500ms compara o eixo do clock com a posição visual da
-        // linha e do retângulo. Se a linha estiver ~1 batida à frente do retângulo, é a
-        // transição CSS adiantando a linha (retângulo segue o tick verdadeiro).
-        if (elapsed - lastAxisLogRef.current >= 500) {
-          lastAxisLogRef.current = elapsed;
-          const { line, bar } = cursorXs();
-          console.log("[Tap] DIAG eixo", {
-            elapsed_ms: Math.round(elapsed),
-            batida: Math.round((elapsed / msPerBeatValue) * 10) / 10,
-            lineX: line === null ? null : Math.round(line),
-            barRectX: bar === null ? null : Math.round(bar),
-          });
-        }
-        if (elapsed >= durationMsRef.current + 300) {
-          stop("done");
-          return;
-        }
+        return;
       }
-      rafRef.current = requestAnimationFrame(loop);
-    };
-    rafRef.current = requestAnimationFrame(loop);
-  };
 
-  const onTap = () => {
-    if (phaseRef.current !== "playing") {
-      // TEMP diag (bug 1): tap descartado pelo gate de fase. Se os seus taps do 1º compasso
-      // aparecerem aqui como fase=countin, você está seguindo uma linha que anda adiantada.
-      const wouldBe = (audioContextTime() - t0Ref.current) * 1000;
+      if (!cursorStartLoggedRef.current) {
+        cursorStartLoggedRef.current = true;
+        // TEMP: o cursor começa a andar aqui — deve coincidir com t0 e com o alvo[0]=0.
+        console.log("[Tap] cursor começou a andar", {
+          now_s: audioContextTime(),
+          elapsed_ms: elapsed,
+        });
+      }
+      staffRef.current?.updatePosition(elapsed);
+
+      // TEMP diag (bug 2): a cada ~500ms compara o eixo do clock com a posição visual da
+      // linha e do retângulo. Se a linha estiver ~1 batida à frente do retângulo, é a
+      // transição CSS adiantando a linha (retângulo segue o tick verdadeiro).
+      if (elapsed - lastAxisLogRef.current >= 500) {
+        lastAxisLogRef.current = elapsed;
+        const { line, bar } = cursorXs();
+        console.log("[Tap] DIAG eixo", {
+          elapsed_ms: Math.round(elapsed),
+          batida: Math.round((elapsed / msPerBeatValue) * 10) / 10,
+          lineX: line === null ? null : Math.round(line),
+          barRectX: bar === null ? null : Math.round(bar),
+        });
+      }
+    },
+    onDiscardedTap: (wouldBe) => {
+      // TEMP diag (bug 1): tap descartado pelo gate de fase.
       console.log("[Tap] DIAG tap DESCARTADO", {
-        fase: phaseRef.current,
+        fase: run.phase,
         wouldBeTapMs: Math.round(wouldBe),
       });
-      return;
-    }
-    const tapMs = (audioContextTime() - t0Ref.current) * 1000;
-    const { result, index } = classifyTap(tapMs, targetsRef.current, DEFAULT_WINDOWS, consumedRef.current);
-    console.log("[Tap] tap", { tapMs: Math.round(tapMs), result, index }); // TEMP
-    if (index >= 0) consumedRef.current.add(index);
-    setCounts((c) => ({ ...c, [result]: c[result] + 1 }));
-    setFeedback(result === "perfect" ? "Perfeito!" : result === "good" ? "Bom" : "Errou");
-  };
+    },
+    onTapResult: (tapMs, result, index) => {
+      console.log("[Tap] tap", { tapMs: Math.round(tapMs), result, index }); // TEMP
+    },
+    onStop: () => {
+      staffRef.current?.pause();
+    },
+  });
 
-  // Tap por ESPAÇO (listener ligado uma vez; lê phase/t0 via refs).
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.code === "Space") {
-        e.preventDefault();
-        onTap();
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const start = () => {
+    // Tentativa nova = padrão novo (3c-1). Tudo desta tentativa deriva da passada gerada
+    // AQUI (síncrono): o setPassEvents só re-renderiza a partitura — o clock e os alvos não
+    // dependem do render (o desenho pode chegar frames depois, durante o count-in).
+    const newPass = generateLevelPass(level);
+    const newPattern = levelToPattern(level, newPass, bpm);
+    const newTargets = expectedTapTimes(newPattern);
+    const newDurationMs = patternDurationMs(newPattern);
+    setPassEvents(newPass);
+
+    cursorStartLoggedRef.current = false;
+    countinLineXRef.current = null;
+    driftLoggedRef.current = false;
+    lastAxisLogRef.current = 0;
+
+    const { countInStart, t0 } = run.start({
+      pattern: newPattern,
+      targets: newTargets,
+      durationMs: newDurationMs,
+      countInBeats,
+      metronome,
+    });
+
+    // TEMP: confirma que count-in, t0 e alvos estão no mesmo eixo.
+    console.log("[Tap] start", {
+      bpm,
+      now_s: audioContextTime(),
+      countInStart_s: countInStart,
+      t0_s: t0,
+      countIn_ms: countInBeats * msPerBeatValue,
+      duration_ms: newDurationMs,
+      expectedTapTimes_ms: newTargets,
+    });
+  };
 
   // Ao CONCLUIR um exercício (fase done — "Parar" vai pra idle e não passa aqui), entrega o
   // resumo pro pai persistir. "Repetir" + nova conclusão dispara de novo (attempts_count
@@ -257,27 +169,14 @@ export function TapMode({ level, onNextLevel, onFinished }: TapModeProps) {
   const onFinishedRef = useRef(onFinished);
   onFinishedRef.current = onFinished;
   useEffect(() => {
-    if (phase !== "done") return;
-    onFinishedRef.current?.(computeSummary(counts, targets.length, level.passThreshold));
+    if (run.phase !== "done") return;
+    onFinishedRef.current?.(computeSummary(run.counts, targets.length, level.passThreshold));
     // counts/targets/level são estáveis enquanto phase === "done" (BPM/nível travados na
     // execução) — o efeito só dispara na transição de fase.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase]);
+  }, [run.phase]);
 
-  // Limpa RAF/cliques ao desmontar.
-  useEffect(() => {
-    return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      for (const osc of scheduledRef.current) {
-        try {
-          osc.stop();
-        } catch {
-          /* noop */
-        }
-      }
-    };
-  }, []);
-
+  const { phase, counts, feedback } = run;
   const running = phase === "countin" || phase === "playing";
 
   return (
@@ -341,7 +240,7 @@ export function TapMode({ level, onNextLevel, onFinished }: TapModeProps) {
         <button
           onClick={(e) => {
             e.currentTarget.blur(); // sem foco → Espaço não reativa este botão (vira só tap)
-            if (running) stop("idle");
+            if (running) run.stop("idle");
             else start();
           }}
           disabled={!ready}
@@ -369,7 +268,7 @@ export function TapMode({ level, onNextLevel, onFinished }: TapModeProps) {
         <button
           onClick={(e) => {
             e.currentTarget.blur(); // evita duplo-tap via Espaço no botão focado
-            onTap();
+            run.tap();
           }}
           disabled={phase !== "playing"}
           className="px-4 py-2 text-sm font-medium"
@@ -405,7 +304,8 @@ export function TapMode({ level, onNextLevel, onFinished }: TapModeProps) {
       {/* Resumo do exercício: % de acerto sobre o total de alvos e aprovação do nível. */}
       {phase === "done" &&
         (() => {
-          const missedTargets = targets.length - consumedRef.current.size;
+          // Alvo consumido <=> tap perfect/good, então "não tocadas" deriva das contagens.
+          const missedTargets = targets.length - (counts.perfect + counts.good);
           const summary = computeSummary(counts, targets.length, level.passThreshold);
           return (
             <div

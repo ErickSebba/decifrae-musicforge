@@ -5,6 +5,7 @@ import {
   playClick,
   playNote,
   playNoteByName,
+  playTone,
   resetAudioContext,
 } from "./audio-engine";
 
@@ -131,5 +132,26 @@ describe("playClick", () => {
 describe("audioContextTime", () => {
   it("retorna o currentTime do contexto", () => {
     expect(audioContextTime()).toBe(0); // mock: currentTime = 0
+  });
+});
+
+describe("playTone", () => {
+  it("agenda início e fim no atTimeSec dado (não em 'agora')", () => {
+    const osc = playTone(131, 0.3, 2.5);
+    expect(osc.type).toBe("sine");
+    expect(osc.frequency.setValueAtTime).toHaveBeenCalledWith(131, 2.5);
+    expect(osc.start).toHaveBeenCalledWith(2.5);
+    expect(osc.stop).toHaveBeenCalledWith(2.5 + 0.3);
+  });
+
+  it("sem atTimeSec toca agora (currentTime do contexto)", () => {
+    const osc = playTone(220, 0.5);
+    expect(osc.start).toHaveBeenCalledWith(0); // mock: currentTime = 0
+    expect(osc.stop).toHaveBeenCalledWith(0.5);
+  });
+
+  it("retorna o oscilador pra permitir cancelamento (contrato do playClick)", () => {
+    const osc = playTone(100, 0.2, 1);
+    expect(createdOscillators[0]).toBe(osc as unknown as MockOscillator);
   });
 });

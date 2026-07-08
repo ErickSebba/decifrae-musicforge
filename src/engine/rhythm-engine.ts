@@ -97,6 +97,28 @@ export function metronomeClickTimes(pattern: RhythmPattern): number[] {
 }
 
 /**
+ * Agenda sonora do Ditado (1.6b): 1 "compasso" de pulso puro (lead-in, estabelece o
+ * andamento) seguido do padrão com pulso de fundo + um tom em cada onset de NOTA (pausas
+ * não soam). Tempos em ms relativos ao início do playback — puro, testável sem áudio.
+ */
+export interface DictationSchedule {
+  pulseTimesMs: number[];
+  noteTimesMs: number[];
+  totalMs: number;
+}
+
+export function dictationSchedule(pattern: RhythmPattern, leadInBeats: number): DictationSchedule {
+  const mpb = msPerBeat(pattern.tempo);
+  const offset = leadInBeats * mpb;
+  const leadPulses = Array.from({ length: leadInBeats }, (_, b) => b * mpb);
+  return {
+    pulseTimesMs: [...leadPulses, ...metronomeClickTimes(pattern).map((t) => t + offset)],
+    noteTimesMs: expectedTapTimes(pattern).map((t) => t + offset),
+    totalMs: offset + patternDurationMs(pattern),
+  };
+}
+
+/**
  * Classifica um tap contra os alvos, ignorando os já consumidos. Retorna o alvo casado
  * (index) para o chamador marcá-lo como consumido. Sem alvo dentro de `goodMs` → miss.
  */
