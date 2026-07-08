@@ -1,5 +1,6 @@
 import {
   patternToTex,
+  type Clef,
   type RhythmEvent,
   type RhythmPattern,
   type TimeSignature,
@@ -52,10 +53,16 @@ export function levelToPattern(
   return { tempo: bpm ?? level.suggestedBpm, events };
 }
 
-/** alphaTex do nível expandido, com compassos separados pela fórmula do nível. */
-export function levelToTex(level: TapLevel, passEvents: RhythmEvent[], bpm?: number): string {
+/** alphaTex do nível expandido, com compassos separados pela fórmula e clave dadas. */
+export function levelToTex(
+  level: TapLevel,
+  passEvents: RhythmEvent[],
+  bpm?: number,
+  clef?: Clef
+): string {
   return patternToTex(levelToPattern(level, passEvents, bpm), {
     timeSignature: level.timeSignature,
+    clef,
   });
 }
 

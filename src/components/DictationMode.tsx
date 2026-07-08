@@ -17,6 +17,7 @@ import {
 import { generateLevelPass } from "../engine/rhythm-generator";
 import { computeSummary, levelToPattern, levelToTex, type TapLevel } from "../engine/levels";
 import { useTapRun } from "../hooks/useTapRun";
+import { useAppStore } from "../store/useAppStore";
 
 const LEAD_SEC = 0.15; // offset pra não agendar sons no passado
 
@@ -62,11 +63,15 @@ export function DictationMode({ level }: DictationModeProps) {
   const [listening, setListening] = useState(false);
   const [beat, setBeat] = useState(0);
 
+  const clef = useAppStore((s) => s.clef);
   const pattern = useMemo(
     () => levelToPattern(dictLevel, passEvents, bpm),
     [dictLevel, passEvents, bpm]
   );
-  const tex = useMemo(() => levelToTex(dictLevel, passEvents, bpm), [dictLevel, passEvents, bpm]);
+  const tex = useMemo(
+    () => levelToTex(dictLevel, passEvents, bpm, clef),
+    [dictLevel, passEvents, bpm, clef]
+  );
   const targets = useMemo(() => expectedTapTimes(pattern), [pattern]);
   const durationMs = useMemo(() => patternDurationMs(pattern), [pattern]);
   const beatsTotal = Math.round(totalBeats(pattern));

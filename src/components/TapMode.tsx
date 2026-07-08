@@ -16,6 +16,7 @@ import {
   type TapLevel,
 } from "../engine/levels";
 import { useTapRun } from "../hooks/useTapRun";
+import { useAppStore } from "../store/useAppStore";
 
 const BPM_MIN = 40;
 const BPM_MAX = 200;
@@ -59,8 +60,12 @@ export function TapMode({ level, onNextLevel, onFinished }: TapModeProps) {
 
   // Tudo derivado do MESMO nível+passada+bpm, sobre o padrão JÁ EXPANDIDO (loop×repeats) —
   // tex, alvos, duração e metrônomo cobrem todas as repetições de forma coerente.
+  const clef = useAppStore((s) => s.clef);
   const pattern = useMemo(() => levelToPattern(level, passEvents, bpm), [level, passEvents, bpm]);
-  const tex = useMemo(() => levelToTex(level, passEvents, bpm), [level, passEvents, bpm]);
+  const tex = useMemo(
+    () => levelToTex(level, passEvents, bpm, clef),
+    [level, passEvents, bpm, clef]
+  );
   const targets = useMemo(() => expectedTapTimes(pattern), [pattern]);
   const msPerBeatValue = useMemo(() => msPerBeat(bpm), [bpm]);
 

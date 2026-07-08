@@ -50,6 +50,17 @@ describe("noteToBassTex", () => {
     expect(noteToBassTex("G2")).toContain("g2");
     expect(noteToBassTex("C3")).toContain("c3");
   });
+
+  it("clave de sol emite \\clef G2 com a escrita UMA 8ª ACIMA (convenção de guitarra)", () => {
+    const tex = noteToBassTex("A3", "G");
+    expect(tex).toContain("\\clef G2");
+    expect(tex).toContain("a4"); // mesma nota soante, escrita 8ª acima em sol
+    expect(noteToBassTex("E2", "G")).toContain("e3");
+  });
+
+  it("sem parâmetro o default segue fá (contrato dos chamadores antigos)", () => {
+    expect(noteToBassTex("A3")).toContain("\\clef F4");
+  });
 });
 
 describe("soundingOctave", () => {

@@ -1,4 +1,5 @@
 import { parseNote, pitchClassName, pitchClassOf } from "./note-utils";
+import { CLEF_TOKEN, type Clef } from "./rhythm-engine";
 
 /**
  * Lógica pura do modo "Livre" de identificação de notas (sem React/áudio).
@@ -44,11 +45,17 @@ export function isCorrectAnswer(writtenNote: string, answerLetter: string): bool
   return pitchClassOf(pitchClassName(writtenNote)) === pitchClassOf(answerLetter);
 }
 
-/** alphaTex de uma única nota escrita na clave de fá (semínima). */
-export function noteToBassTex(writtenNote: string): string {
+/**
+ * alphaTex de uma única nota escrita (semínima), na clave dada (default fá).
+ * Em SOL a escrita sobe uma 8ª (convenção de guitarra — também instrumento transpositor):
+ * a nota SOANTE é a mesma, mas cai numa região legível da pauta de sol em vez de ficar
+ * 5+ linhas suplementares abaixo. O áudio não muda (deriva da nota do pool, não da escrita).
+ */
+export function noteToBassTex(writtenNote: string, clef: Clef = "F"): string {
   const { octave } = parseNote(writtenNote);
   const name = pitchClassName(writtenNote).toLowerCase();
-  return `\\clef F4\n.\n:4 ${name}${octave}`;
+  const writtenOctave = clef === "G" ? octave + 1 : octave;
+  return `\\clef ${CLEF_TOKEN[clef]}\n.\n:4 ${name}${writtenOctave}`;
 }
 
 /** Oitava soante para o áudio: o baixo soa uma 8ª abaixo do escrito. */

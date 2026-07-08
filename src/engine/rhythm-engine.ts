@@ -146,26 +146,38 @@ export function classifyTap(
 
 const DURATION_TOKEN: Record<number, string> = { 4: "1", 2: "2", 1: "4", 0.5: "8", 0.25: "16" };
 
+/**
+ * Clave de escrita (só notação — as alturas absolutas não mudam). Tokens do alphaTex
+ * confirmados na fonte do AlphaTab (mapa de claves aceita "f4"/"g2").
+ */
+export type Clef = "F" | "G";
+export const CLEF_TOKEN: Record<Clef, string> = { F: "F4", G: "G2" };
+
 export interface PatternToTexOptions {
   pitch?: string;
   /** Se informada, emite `\ts` e separa os compassos com `|` (exige compassos exatos). */
   timeSignature?: TimeSignature;
+  /** Clave de escrita (default fá — não quebra chamadores/testes existentes). */
+  clef?: Clef;
 }
 
 /**
- * alphaTex do padrão em clave de fá, altura fixa (a altura não importa no Tap).
+ * alphaTex do padrão, altura fixa (a altura não importa no Tap), clave configurável.
  * O `\tempo` precisa casar com `pattern.tempo`: assim o eixo de tempo (ms) do MIDI do AlphaTab
  * coincide com o nosso clock, e `updatePosition(elapsed)` posiciona o cursor em sincronia.
  */
 export function patternToTex(pattern: RhythmPattern, options: PatternToTexOptions = {}): string {
-  const pitch = options.pitch ?? "c3";
+  const clef = options.clef ?? "F";
+  // Em sol a escrita sobe uma 8ª (convenção de guitarra): c3 → c4, região legível da pauta.
+  const pitch = options.pitch ?? (clef === "G" ? "c4" : "c3");
+  const clefToken = CLEF_TOKEN[clef];
   const eventToken = (ev: RhythmEvent) =>
     `:${DURATION_TOKEN[ev.beats] ?? "4"} ${ev.rest ? "r" : pitch}`;
 
   const ts = options.timeSignature;
   const header = ts
-    ? `\\tempo ${pattern.tempo}\n\\ts ${ts.count} ${ts.unit}\n\\clef F4\n.\n`
-    : `\\tempo ${pattern.tempo}\n\\clef F4\n.\n`;
+    ? `\\tempo ${pattern.tempo}\n\\ts ${ts.count} ${ts.unit}\n\\clef ${clefToken}\n.\n`
+    : `\\tempo ${pattern.tempo}\n\\clef ${clefToken}\n.\n`;
   const body = ts
     ? splitIntoBars(pattern.events, ts)
         .map((bar) => bar.map(eventToken).join(" "))

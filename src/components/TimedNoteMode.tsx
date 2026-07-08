@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Notation } from "./Notation";
+import { useAppStore } from "../store/useAppStore";
 import { playNoteByName } from "../engine/audio-engine";
 import { pitchClassName } from "../engine/note-utils";
 import {
@@ -38,6 +39,7 @@ type NoteStatus = "waiting" | "correct" | "wrong" | "timeout";
  * resumo (velocidade vs leitura). Sem persistência: resultado dura a sessão (Módulo 3).
  */
 export function TimedNoteMode() {
+  const clef = useAppStore((s) => s.clef);
   const [phase, setPhase] = useState<UiPhase>("config");
   const [difficulty, setDifficulty] = useState<Difficulty>("facil");
   const [formatKind, setFormatKind] = useState<RoundFormat["kind"]>("fixed");
@@ -257,7 +259,7 @@ export function TimedNoteMode() {
             )}
           </div>
 
-          <Notation tex={noteToBassTex(note)} />
+          <Notation tex={noteToBassTex(note, clef)} />
 
           {/* Barra de tempo restante da nota atual. */}
           <div

@@ -14,6 +14,27 @@ const FOUR_QUARTERS: RhythmPattern = {
   events: [{ beats: 1 }, { beats: 1 }, { beats: 1 }, { beats: 1 }],
 };
 
+describe("patternToTex — clave", () => {
+  it("clef G emite \\clef G2 com pitch 8ª acima (c4), mantendo \\tempo e \\ts", () => {
+    const tex = patternToTex(FOUR_QUARTERS, { timeSignature: { count: 4, unit: 4 }, clef: "G" });
+    expect(tex).toContain("\\clef G2");
+    expect(tex).toContain("c4"); // escrita sobe 8ª em sol (convenção de guitarra)
+    expect(tex).not.toContain("c3");
+    expect(tex).toContain("\\tempo 60");
+    expect(tex).toContain("\\ts 4 4");
+  });
+
+  it("sem clef o default segue fá com pitch c3", () => {
+    const tex = patternToTex(FOUR_QUARTERS);
+    expect(tex).toContain("\\clef F4");
+    expect(tex).toContain("c3");
+  });
+
+  it("pitch explícito tem precedência sobre a convenção da clave", () => {
+    expect(patternToTex(FOUR_QUARTERS, { clef: "G", pitch: "e3" })).toContain("e3");
+  });
+});
+
 describe("dictationSchedule", () => {
   it("lead-in gera N pulsos antes do zero do padrão e desloca notas e grade", () => {
     const s = dictationSchedule(FOUR_QUARTERS, 4); // 60 BPM → 1000 ms/batida

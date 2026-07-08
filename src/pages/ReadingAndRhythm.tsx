@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { useAppStore } from "../store/useAppStore";
+import type { Clef } from "../engine/rhythm-engine";
 import { Notation } from "../components/Notation";
 import { TapMode } from "../components/TapMode";
 import { TimedNoteMode } from "../components/TimedNoteMode";
@@ -156,6 +158,7 @@ function DictationSection() {
 type Status = "idle" | "correct" | "wrong";
 
 function FreeNoteMode() {
+  const clef = useAppStore((s) => s.clef);
   const [note, setNote] = useState(() => pickRandomNote());
   const [status, setStatus] = useState<Status>("idle");
   const [selected, setSelected] = useState<string | null>(null);
@@ -193,7 +196,7 @@ function FreeNoteMode() {
         Modo Livre · Identificação de Notas
       </h3>
 
-      <Notation tex={noteToBassTex(note)} />
+      <Notation tex={noteToBassTex(note, clef)} />
 
       <div className="flex flex-wrap gap-2">
         {ANSWER_LETTERS.map((letter) => (
@@ -243,6 +246,8 @@ function FreeNoteMode() {
 /** Módulo 1 — Leitura e Ritmo. Seletor de modo + modo Livre (sem pressão de tempo). */
 export function ReadingAndRhythm() {
   const [activeMode, setActiveMode] = useState("free");
+  const clef = useAppStore((s) => s.clef);
+  const setClef = useAppStore((s) => s.setClef);
 
   return (
     <div className="flex flex-col gap-6 max-w-2xl">
@@ -253,6 +258,31 @@ export function ReadingAndRhythm() {
         <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
           Identifique a nota mostrada na pauta, no seu ritmo.
         </p>
+      </div>
+
+      {/* Clave global do módulo: vale pros 4 modos ao mesmo tempo. Só muda a ESCRITA —
+          as alturas absolutas continuam as mesmas (em sol, o baixo cai abaixo da pauta). */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs uppercase tracking-widest" style={{ color: "var(--color-text-dim)" }}>
+          Clave
+        </span>
+        {(["F", "G"] as Clef[]).map((c) => (
+          <button
+            key={c}
+            onClick={(e) => {
+              e.currentTarget.blur();
+              setClef(c);
+            }}
+            className="px-3 py-1.5 text-sm font-medium"
+            style={{
+              background: clef === c ? "var(--color-accent-purple)" : "var(--color-bg-card)",
+              color: clef === c ? "#fff" : "var(--color-text-muted)",
+              borderRadius: "var(--radius-btn)",
+            }}
+          >
+            {c === "F" ? "Fá" : "Sol"}
+          </button>
+        ))}
       </div>
 
       <div className="flex flex-wrap gap-2">

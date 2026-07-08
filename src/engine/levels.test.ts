@@ -112,6 +112,13 @@ describe("levelToTex", () => {
     expect(tex).toContain(":1 c3");
   });
 
+  it("clave de sol repassa até o tex (\\clef G2); sem clave, fá", () => {
+    const pass = [q, q, q, q];
+    const level = { ...CURATED_LEVELS[0], structure: { type: "through", bars: 1 } as const };
+    expect(levelToTex(level, pass, 80, "G")).toContain("\\clef G2");
+    expect(levelToTex(level, pass, 80)).toContain("\\clef F4");
+  });
+
   it("perfil 3/4 emite \\ts 3 4 com compassos de 3 batidas", () => {
     // 4 compassos 3/4: | q q q | h q | q h | r q q |
     const pass = [q, q, q, h, q, q, h, rq, q, q];
