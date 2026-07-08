@@ -2,16 +2,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { RhythmStaff, type RhythmStaffHandle } from "./RhythmStaff";
 import { audioContextTime, playClick } from "../engine/audio-engine";
 import {
-  DEFAULT_PATTERN,
   DEFAULT_WINDOWS,
   classifyTap,
   expectedTapTimes,
   metronomeClickTimes,
   msPerBeat,
   patternDurationMs,
-  patternToTex,
   type TapResult,
 } from "../engine/rhythm-engine";
+import { computeSummary, levelToPattern, levelToTex, type TapLevel } from "../engine/levels";
 
 const COUNT_IN_BEATS = 4; // 1 compasso 4/4 de contagem antes da partitura avançar
 const LEAD_SEC = 0.15; // pequeno offset para não agendar cliques no passado
@@ -22,7 +21,23 @@ const BPM_PRESETS = [60, 80, 100, 120];
 
 type Phase = "idle" | "countin" | "playing" | "done";
 
-export function TapMode() {
+// TEMP diag: translateX atual da linha (.at-cursor-beat) e do retângulo (.at-cursor-bar).
+function cursorXs(): { line: number | null; bar: number | null } {
+  const read = (sel: string) => {
+    const el = document.querySelector(sel) as HTMLElement | null;
+    const m = el?.style.transform.match(/translate\((-?[\d.]+)px/);
+    return m ? Number(m[1]) : null;
+  };
+  return { line: read(".at-cursor-beat"), bar: read(".at-cursor-bar") };
+}
+
+interface TapModeProps {
+  level: TapLevel;
+  /** Avanço livre nesta etapa; o desbloqueio persistido vem na 3b. */
+  onNextLevel?: () => void;
+}
+
+export function TapMode({ level, onNextLevel }: TapModeProps) {
   const staffRef = useRef<RhythmStaffHandle>(null);
   const rafRef = useRef<number | null>(null);
   const t0Ref = useRef(0); // tempo (s) do contexto onde a partitura começa (após count-in)
@@ -30,17 +45,21 @@ export function TapMode() {
   const scheduledRef = useRef<OscillatorNode[]>([]);
   const phaseRef = useRef<Phase>("idle");
   const cursorStartLoggedRef = useRef(false); // TEMP: log do início real do cursor
+  const countinLineXRef = useRef<number | null>(null); // TEMP diag: x da linha no início do count-in
+  const driftLoggedRef = useRef(false); // TEMP diag
+  const lastAxisLogRef = useRef(0); // TEMP diag: throttle do log de eixos
 
   const [ready, setReady] = useState(false);
   const [metronome, setMetronome] = useState(true);
-  const [bpm, setBpm] = useState(DEFAULT_PATTERN.tempo);
+  const [bpm, setBpm] = useState(level.suggestedBpm);
   const [phase, setPhaseState] = useState<Phase>("idle");
   const [counts, setCounts] = useState<Record<TapResult, number>>({ perfect: 0, good: 0, miss: 0 });
   const [feedback, setFeedback] = useState("");
 
-  // Tudo derivado do MESMO bpm — tex, alvos, duração e ms/batida ficam sempre coerentes.
-  const pattern = useMemo(() => ({ ...DEFAULT_PATTERN, tempo: bpm }), [bpm]);
-  const tex = useMemo(() => patternToTex(pattern), [pattern]);
+  // Tudo derivado do MESMO nível+bpm, sobre o padrão JÁ EXPANDIDO (loop×repeats/through) —
+  // tex, alvos, duração e metrônomo cobrem todas as repetições de forma coerente.
+  const pattern = useMemo(() => levelToPattern(level, bpm), [level, bpm]);
+  const tex = useMemo(() => levelToTex(level, bpm), [level, bpm]);
   const targets = useMemo(() => expectedTapTimes(pattern), [pattern]);
   const durationMs = useMemo(() => patternDurationMs(pattern), [pattern]);
   const msPerBeatValue = useMemo(() => msPerBeat(bpm), [bpm]);
@@ -78,6 +97,9 @@ export function TapMode() {
     const t0 = countInStart + (COUNT_IN_BEATS * msPerBeatValue) / 1000;
     t0Ref.current = t0;
     cursorStartLoggedRef.current = false;
+    countinLineXRef.current = null;
+    driftLoggedRef.current = false;
+    lastAxisLogRef.current = 0;
 
     // TEMP: confirma que count-in, t0 e alvos estão no mesmo eixo.
     console.log("[Tap] start", {
@@ -102,13 +124,32 @@ export function TapMode() {
       }
     }
 
-    staffRef.current?.play();
+    // NÃO chamamos staff.play(): com o player em Paused, o AlphaTab reposiciona a linha a
+    // CADA updatePosition com interpolação por tick (forceUpdate), sem a transição CSS do
+    // modo Playing — a linha fica 100% travada no nosso clock (fix dos bugs de sincronia:
+    // linha andando sozinha no count-in e adiantada em relação ao retângulo de compasso).
     setPhase("countin");
 
     const loop = () => {
       const elapsed = (audioContextTime() - t0Ref.current) * 1000;
       if (elapsed < 0) {
         staffRef.current?.updatePosition(0); // cursor parado no início durante o count-in
+
+        // TEMP diag (bug 1/2): durante o count-in a linha NÃO deveria se mover — seguramos a
+        // posição em 0. Se ela andar aqui, é a transição CSS do cursor animado correndo sozinha.
+        const { line } = cursorXs();
+        if (line !== null) {
+          if (countinLineXRef.current === null) {
+            countinLineXRef.current = line;
+          } else if (!driftLoggedRef.current && Math.abs(line - countinLineXRef.current) > 2) {
+            driftLoggedRef.current = true;
+            console.log("[Tap] DIAG: linha se moveu DURANTE o count-in (não deveria)", {
+              xInicial: Math.round(countinLineXRef.current),
+              xAtual: Math.round(line),
+              elapsed_ms: Math.round(elapsed),
+            });
+          }
+        }
       } else {
         if (!cursorStartLoggedRef.current) {
           cursorStartLoggedRef.current = true;
@@ -121,6 +162,20 @@ export function TapMode() {
         }
         staffRef.current?.updatePosition(elapsed);
         if (phaseRef.current !== "playing") setPhase("playing");
+
+        // TEMP diag (bug 2): a cada ~500ms compara o eixo do clock com a posição visual da
+        // linha e do retângulo. Se a linha estiver ~1 batida à frente do retângulo, é a
+        // transição CSS adiantando a linha (retângulo segue o tick verdadeiro).
+        if (elapsed - lastAxisLogRef.current >= 500) {
+          lastAxisLogRef.current = elapsed;
+          const { line, bar } = cursorXs();
+          console.log("[Tap] DIAG eixo", {
+            elapsed_ms: Math.round(elapsed),
+            batida: Math.round((elapsed / msPerBeatValue) * 10) / 10,
+            lineX: line === null ? null : Math.round(line),
+            barRectX: bar === null ? null : Math.round(bar),
+          });
+        }
         if (elapsed >= durationMs + 300) {
           stop("done");
           return;
@@ -132,7 +187,16 @@ export function TapMode() {
   };
 
   const onTap = () => {
-    if (phaseRef.current !== "playing") return; // ignora durante count-in/idle/done
+    if (phaseRef.current !== "playing") {
+      // TEMP diag (bug 1): tap descartado pelo gate de fase. Se os seus taps do 1º compasso
+      // aparecerem aqui como fase=countin, você está seguindo uma linha que anda adiantada.
+      const wouldBe = (audioContextTime() - t0Ref.current) * 1000;
+      console.log("[Tap] DIAG tap DESCARTADO", {
+        fase: phaseRef.current,
+        wouldBeTapMs: Math.round(wouldBe),
+      });
+      return;
+    }
     const tapMs = (audioContextTime() - t0Ref.current) * 1000;
     const { result, index } = classifyTap(tapMs, targetsRef.current, DEFAULT_WINDOWS, consumedRef.current);
     console.log("[Tap] tap", { tapMs: Math.round(tapMs), result, index }); // TEMP
@@ -173,7 +237,11 @@ export function TapMode() {
   return (
     <div className="flex flex-col gap-5">
       <h3 className="text-sm font-medium" style={{ color: "var(--color-text-muted)" }}>
-        Modo Tap · Leitura Rítmica
+        Modo Tap · {level.name}
+        <span className="text-xs ml-2" style={{ color: "var(--color-text-dim)" }}>
+          {level.vocabulary.join(" · ")}
+          {level.structure.type === "loop" && ` · ${level.structure.repeats}× repetições`}
+        </span>
       </h3>
 
       <RhythmStaff ref={staffRef} tex={tex} onReady={() => setReady(true)} />
@@ -286,10 +354,68 @@ export function TapMode() {
             {feedback}
           </span>
         )}
-        {phase === "done" && (
-          <span style={{ color: "var(--color-text-muted)" }}>Fim do exercício.</span>
-        )}
       </div>
+
+      {/* Resumo do exercício: % de acerto sobre o total de alvos e aprovação do nível. */}
+      {phase === "done" &&
+        (() => {
+          const missedTargets = targets.length - consumedRef.current.size;
+          const summary = computeSummary(counts, targets.length, level.passThreshold);
+          return (
+            <div
+              className="flex flex-col gap-3 p-4"
+              style={{ background: "var(--color-bg-card)", borderRadius: "var(--radius-card)" }}
+            >
+              <span
+                className="text-base font-semibold"
+                style={{
+                  color: summary.passed ? "var(--color-accent-teal)" : "var(--color-accent-pink)",
+                }}
+              >
+                {summary.passed ? "Passou!" : "Não passou"} — {Math.round(summary.ratio * 100)}%
+                <span className="text-xs font-normal ml-2" style={{ color: "var(--color-text-dim)" }}>
+                  (mínimo {Math.round(level.passThreshold * 100)}%)
+                </span>
+              </span>
+              <span className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+                {summary.hits} de {targets.length} notas ({counts.perfect} perfeitas, {counts.good}{" "}
+                boas) · {missedTargets} não tocadas · {counts.miss} taps fora de hora
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    start();
+                  }}
+                  className="px-4 py-2 text-sm font-medium"
+                  style={{
+                    background: "var(--color-accent-purple)",
+                    color: "#fff",
+                    borderRadius: "var(--radius-btn)",
+                  }}
+                >
+                  Repetir
+                </button>
+                {onNextLevel && (
+                  <button
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onNextLevel();
+                    }}
+                    className="px-4 py-2 text-sm font-medium"
+                    style={{
+                      background: "var(--color-accent-teal)",
+                      color: "#fff",
+                      borderRadius: "var(--radius-btn)",
+                    }}
+                  >
+                    Próximo nível
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
       <dl className="flex gap-6 text-sm" style={{ color: "var(--color-text-muted)" }}>
         <div>

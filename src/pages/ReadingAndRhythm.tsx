@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Notation } from "../components/Notation";
 import { TapMode } from "../components/TapMode";
+import { CURATED_LEVELS } from "../engine/levels";
 import { playNoteByName } from "../engine/audio-engine";
 import { pitchClassName } from "../engine/note-utils";
 import {
@@ -18,6 +19,47 @@ const MODES: { id: string; label: string; enabled: boolean }[] = [
 ];
 
 const ANSWER_LETTERS = ["C", "D", "E", "F", "G", "A", "B"];
+
+/** Seleção de nível do Tap (sem travas — o desbloqueio persistido vem na 3b). */
+function TapSection() {
+  const [levelIndex, setLevelIndex] = useState(0);
+  const level = CURATED_LEVELS[levelIndex];
+  const hasNext = levelIndex < CURATED_LEVELS.length - 1;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap gap-2">
+        {CURATED_LEVELS.map((lv, i) => {
+          const isActive = i === levelIndex;
+          return (
+            <button
+              key={lv.id}
+              onClick={(e) => {
+                e.currentTarget.blur();
+                setLevelIndex(i);
+              }}
+              className="px-3 py-1.5 text-sm font-medium"
+              style={{
+                background: isActive ? "var(--color-accent-purple)" : "var(--color-bg-card)",
+                color: isActive ? "#fff" : "var(--color-text-muted)",
+                borderRadius: "var(--radius-btn)",
+              }}
+            >
+              {i + 1}. {lv.name}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* key={level.id} remonta o TapMode ao trocar de nível (reseta BPM, fase, contagens). */}
+      <TapMode
+        key={level.id}
+        level={level}
+        onNextLevel={hasNext ? () => setLevelIndex(levelIndex + 1) : undefined}
+      />
+    </div>
+  );
+}
 
 type Status = "idle" | "correct" | "wrong";
 
@@ -145,7 +187,7 @@ export function ReadingAndRhythm() {
       </div>
 
       {activeMode === "free" && <FreeNoteMode />}
-      {activeMode === "tap" && <TapMode />}
+      {activeMode === "tap" && <TapSection />}
     </div>
   );
 }

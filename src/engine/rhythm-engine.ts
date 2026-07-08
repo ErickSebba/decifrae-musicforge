@@ -5,10 +5,50 @@
  */
 
 export interface RhythmEvent {
-  /** Duração em batidas (1 = semínima, 0.5 = colcheia, 2 = mínima). */
+  /** Duração em batidas (1 = semínima, 0.5 = colcheia, 2 = mínima, 4 = semibreve). */
   beats: number;
   /** Se true, é uma pausa: ocupa tempo mas não espera tap. */
   rest?: boolean;
+}
+
+/** Fórmula de compasso (4/4 → { count: 4, unit: 4 }). */
+export interface TimeSignature {
+  count: number;
+  unit: number;
+}
+
+/** Batidas (em semínimas) que preenchem um compasso da fórmula dada. */
+export function beatsPerBar(ts: TimeSignature): number {
+  return ts.count * (4 / ts.unit);
+}
+
+/**
+ * Agrupa os eventos em compassos exatos. Lança erro se algum evento atravessa a barra ou se
+ * o último compasso fica incompleto — usado na validação dos níveis curados e no tex.
+ */
+export function splitIntoBars(events: RhythmEvent[], ts: TimeSignature): RhythmEvent[][] {
+  const barLen = beatsPerBar(ts);
+  const bars: RhythmEvent[][] = [];
+  let current: RhythmEvent[] = [];
+  let filled = 0;
+  for (const ev of events) {
+    if (filled + ev.beats > barLen) {
+      throw new Error(
+        `Compasso quebrado: evento de ${ev.beats} batida(s) estoura o compasso ${bars.length + 1} (${filled}/${barLen})`
+      );
+    }
+    current.push(ev);
+    filled += ev.beats;
+    if (filled === barLen) {
+      bars.push(current);
+      current = [];
+      filled = 0;
+    }
+  }
+  if (filled !== 0) {
+    throw new Error(`Compasso ${bars.length + 1} incompleto: soma ${filled}/${barLen}`);
+  }
+  return bars;
 }
 
 export interface RhythmPattern {
@@ -88,16 +128,32 @@ export function classifyTap(
   return { result: bestDiff <= windows.perfectMs ? "perfect" : "good", index: bestIndex };
 }
 
-const DURATION_TOKEN: Record<number, string> = { 2: "2", 1: "4", 0.5: "8", 0.25: "16" };
+const DURATION_TOKEN: Record<number, string> = { 4: "1", 2: "2", 1: "4", 0.5: "8", 0.25: "16" };
+
+export interface PatternToTexOptions {
+  pitch?: string;
+  /** Se informada, emite `\ts` e separa os compassos com `|` (exige compassos exatos). */
+  timeSignature?: TimeSignature;
+}
 
 /**
  * alphaTex do padrão em clave de fá, altura fixa (a altura não importa no Tap).
  * O `\tempo` precisa casar com `pattern.tempo`: assim o eixo de tempo (ms) do MIDI do AlphaTab
  * coincide com o nosso clock, e `updatePosition(elapsed)` posiciona o cursor em sincronia.
  */
-export function patternToTex(pattern: RhythmPattern, pitch = "c3"): string {
-  const body = pattern.events
-    .map((ev) => `:${DURATION_TOKEN[ev.beats] ?? "4"} ${ev.rest ? "r" : pitch}`)
-    .join(" ");
-  return `\\tempo ${pattern.tempo}\n\\clef F4\n.\n${body}`;
+export function patternToTex(pattern: RhythmPattern, options: PatternToTexOptions = {}): string {
+  const pitch = options.pitch ?? "c3";
+  const eventToken = (ev: RhythmEvent) =>
+    `:${DURATION_TOKEN[ev.beats] ?? "4"} ${ev.rest ? "r" : pitch}`;
+
+  const ts = options.timeSignature;
+  const header = ts
+    ? `\\tempo ${pattern.tempo}\n\\ts ${ts.count} ${ts.unit}\n\\clef F4\n.\n`
+    : `\\tempo ${pattern.tempo}\n\\clef F4\n.\n`;
+  const body = ts
+    ? splitIntoBars(pattern.events, ts)
+        .map((bar) => bar.map(eventToken).join(" "))
+        .join(" | ")
+    : pattern.events.map(eventToken).join(" ");
+  return header + body;
 }

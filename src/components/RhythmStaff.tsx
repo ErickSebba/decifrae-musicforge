@@ -65,7 +65,12 @@ export const RhythmStaff = forwardRef<RhythmStaffHandle, RhythmStaffProps>(funct
     api.midiLoaded.on((e) => {
       durationRef.current = e.endTime;
     });
-    api.playerReady.on(() => onReadyRef.current?.());
+    api.playerReady.on(() => {
+      // Anexa o handler de mídia externa já aqui: updatePosition funciona sem api.play().
+      const output = api.player?.output as unknown as alphaTab.synth.IExternalMediaSynthOutput;
+      if (output) output.handler = handlerRef.current;
+      onReadyRef.current?.();
+    });
 
     return () => {
       api.destroy();
