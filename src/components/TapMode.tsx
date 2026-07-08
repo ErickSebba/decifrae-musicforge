@@ -3,6 +3,7 @@ import { RhythmStaff, type RhythmStaffHandle } from "./RhythmStaff";
 import { audioContextTime, playClick } from "../engine/audio-engine";
 import {
   DEFAULT_WINDOWS,
+  beatsPerBar,
   classifyTap,
   expectedTapTimes,
   metronomeClickTimes,
@@ -10,6 +11,7 @@ import {
   patternDurationMs,
   type TapResult,
 } from "../engine/rhythm-engine";
+import { FIGURE_LABELS, generateLevelPass } from "../engine/rhythm-generator";
 import {
   computeSummary,
   levelToPattern,
@@ -18,7 +20,6 @@ import {
   type TapLevel,
 } from "../engine/levels";
 
-const COUNT_IN_BEATS = 4; // 1 compasso 4/4 de contagem antes da partitura avançar
 const LEAD_SEC = 0.15; // pequeno offset para não agendar cliques no passado
 
 const BPM_MIN = 40;
@@ -64,17 +65,29 @@ export function TapMode({ level, onNextLevel, onFinished }: TapModeProps) {
   const [counts, setCounts] = useState<Record<TapResult, number>>({ perfect: 0, good: 0, miss: 0 });
   const [feedback, setFeedback] = useState("");
 
-  // Tudo derivado do MESMO nível+bpm, sobre o padrão JÁ EXPANDIDO (loop×repeats/through) —
+  // Passada do gerador (3c-1): nasce no mount e é re-sorteada a CADA start() — Iniciar e
+  // Repetir são tentativas novas, logo padrões novos. As camadas abaixo (levelToPattern,
+  // tex, alvos) recebem a passada como parâmetro e não sabem que ela foi gerada.
+  const [passEvents, setPassEvents] = useState(() => generateLevelPass(level));
+
+  // Count-in de 1 compasso na fórmula do nível (4 cliques em 4/4, 3 em 3/4).
+  const countInBeats = beatsPerBar(level.timeSignature);
+
+  // Tudo derivado do MESMO nível+passada+bpm, sobre o padrão JÁ EXPANDIDO (loop×repeats) —
   // tex, alvos, duração e metrônomo cobrem todas as repetições de forma coerente.
-  const pattern = useMemo(() => levelToPattern(level, bpm), [level, bpm]);
-  const tex = useMemo(() => levelToTex(level, bpm), [level, bpm]);
+  const pattern = useMemo(() => levelToPattern(level, passEvents, bpm), [level, passEvents, bpm]);
+  const tex = useMemo(() => levelToTex(level, passEvents, bpm), [level, passEvents, bpm]);
   const targets = useMemo(() => expectedTapTimes(pattern), [pattern]);
   const durationMs = useMemo(() => patternDurationMs(pattern), [pattern]);
   const msPerBeatValue = useMemo(() => msPerBeat(bpm), [bpm]);
 
-  // onTap roda num listener ligado uma vez; lê os alvos atuais via ref (evita closure obsoleta).
+  // loop/onTap rodam em closures ligadas no start(); leem alvos/duração via ref. Os refs são
+  // reescritos DENTRO do start() com os valores da passada recém-gerada (o estado só chega
+  // no re-render seguinte) e re-sincronizados a cada render (convergem pros mesmos valores).
   const targetsRef = useRef(targets);
   targetsRef.current = targets;
+  const durationMsRef = useRef(durationMs);
+  durationMsRef.current = durationMs;
 
   const setPhase = (p: Phase) => {
     phaseRef.current = p;
@@ -101,8 +114,20 @@ export function TapMode({ level, onNextLevel, onFinished }: TapModeProps) {
     setCounts({ perfect: 0, good: 0, miss: 0 });
     setFeedback("");
 
+    // Tentativa nova = padrão novo (3c-1). Tudo desta tentativa deriva da passada gerada
+    // AQUI (síncrono, em locais + refs): o setPassEvents só re-renderiza a partitura — o
+    // clock e os alvos não dependem do render (o desenho pode chegar frames depois, durante
+    // o count-in, sem afetar a sincronia).
+    const newPass = generateLevelPass(level);
+    const newPattern = levelToPattern(level, newPass, bpm);
+    const newTargets = expectedTapTimes(newPattern);
+    const newDurationMs = patternDurationMs(newPattern);
+    setPassEvents(newPass);
+    targetsRef.current = newTargets;
+    durationMsRef.current = newDurationMs;
+
     const countInStart = audioContextTime() + LEAD_SEC;
-    const t0 = countInStart + (COUNT_IN_BEATS * msPerBeatValue) / 1000;
+    const t0 = countInStart + (countInBeats * msPerBeatValue) / 1000;
     t0Ref.current = t0;
     cursorStartLoggedRef.current = false;
     countinLineXRef.current = null;
@@ -115,19 +140,19 @@ export function TapMode({ level, onNextLevel, onFinished }: TapModeProps) {
       now_s: audioContextTime(),
       countInStart_s: countInStart,
       t0_s: t0,
-      countIn_ms: COUNT_IN_BEATS * msPerBeatValue,
-      duration_ms: durationMs,
-      expectedTapTimes_ms: targets,
+      countIn_ms: countInBeats * msPerBeatValue,
+      duration_ms: newDurationMs,
+      expectedTapTimes_ms: newTargets,
     });
 
     // Count-in: sempre audível (independe do toggle do metrônomo).
     scheduledRef.current = [];
-    for (let i = 0; i < COUNT_IN_BEATS; i++) {
+    for (let i = 0; i < countInBeats; i++) {
       scheduledRef.current.push(playClick(countInStart + (i * msPerBeatValue) / 1000));
     }
     // Pulso do exercício: só se o metrônomo estiver ligado.
     if (metronome) {
-      for (const ct of metronomeClickTimes(pattern)) {
+      for (const ct of metronomeClickTimes(newPattern)) {
         scheduledRef.current.push(playClick(t0 + ct / 1000));
       }
     }
@@ -184,7 +209,7 @@ export function TapMode({ level, onNextLevel, onFinished }: TapModeProps) {
             barRectX: bar === null ? null : Math.round(bar),
           });
         }
-        if (elapsed >= durationMs + 300) {
+        if (elapsed >= durationMsRef.current + 300) {
           stop("done");
           return;
         }
@@ -260,7 +285,7 @@ export function TapMode({ level, onNextLevel, onFinished }: TapModeProps) {
       <h3 className="text-sm font-medium" style={{ color: "var(--color-text-muted)" }}>
         Modo Tap · {level.name}
         <span className="text-xs ml-2" style={{ color: "var(--color-text-dim)" }}>
-          {level.vocabulary.join(" · ")}
+          {level.vocabulary.map((f) => FIGURE_LABELS[f]).join(" · ")}
           {level.structure.type === "loop" && ` · ${level.structure.repeats}× repetições`}
         </span>
       </h3>

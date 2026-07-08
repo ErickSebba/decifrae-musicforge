@@ -3,42 +3,54 @@ import {
   CURATED_LEVELS,
   computeSummary,
   deriveUnlockedLevels,
-  levelBars,
   levelRepeats,
   levelToPattern,
   levelToTex,
   type ProgressRecord,
 } from "./levels";
-import { expectedTapTimes, patternDurationMs, splitIntoBars } from "./rhythm-engine";
+import {
+  expectedTapTimes,
+  patternDurationMs,
+  splitIntoBars,
+  type RhythmEvent,
+} from "./rhythm-engine";
 
-describe("níveis curados — integridade musical", () => {
-  it.each(CURATED_LEVELS.map((lv) => [lv.name, lv] as const))(
-    "'%s' tem todos os compassos fechando exatamente a fórmula",
-    (_name, level) => {
-      // splitIntoBars lança se algum compasso estourar ou ficar incompleto.
-      const bars = levelBars(level);
-      expect(bars).toHaveLength(level.structure.bars);
-    }
-  );
+// Atalhos para passadas LITERAIS: as funções de nível recebem a passada como parâmetro e
+// não sabem se veio do gerador ou de um array escrito à mão — estes testes provam isso.
+const q: RhythmEvent = { beats: 1 };
+const h: RhythmEvent = { beats: 2 };
+const w: RhythmEvent = { beats: 4 };
+const rq: RhythmEvent = { beats: 1, rest: true };
 
-  it("há 6 níveis, todos em 4/4 e com threshold válido", () => {
+describe("perfis curados — configuração", () => {
+  it("há 6 perfis: l1–l5 em 4/4 e l6 em 3/4, thresholds válidos", () => {
     expect(CURATED_LEVELS).toHaveLength(6);
-    for (const lv of CURATED_LEVELS) {
+    for (const lv of CURATED_LEVELS.slice(0, 5)) {
       expect(lv.timeSignature).toEqual({ count: 4, unit: 4 });
+    }
+    expect(CURATED_LEVELS[5].timeSignature).toEqual({ count: 3, unit: 4 });
+    for (const lv of CURATED_LEVELS) {
       expect(lv.passThreshold).toBeGreaterThan(0);
       expect(lv.passThreshold).toBeLessThanOrEqual(1);
+      expect(lv.vocabulary.length).toBeGreaterThan(0);
     }
+  });
+
+  it("o perfil 3/4 não inclui semibreve (não cabe em 3 batidas)", () => {
+    expect(CURATED_LEVELS[5].vocabulary).not.toContain("semibreve");
   });
 });
 
-describe("levelToPattern — expansão loop vs through", () => {
+describe("levelToPattern — expansão loop vs through (passada por parâmetro)", () => {
+  const PASS_2_BARS: RhythmEvent[] = [q, q, q, q, h, h]; // 2 compassos 4/4 literais
+
   it("loop N×M: alvos e duração cobrem todas as repetições", () => {
     const loop = CURATED_LEVELS.find((lv) => lv.structure.type === "loop")!;
     const repeats = levelRepeats(loop);
     expect(repeats).toBeGreaterThan(1);
 
-    const onePass = { tempo: loop.suggestedBpm, events: loop.pattern };
-    const expanded = levelToPattern(loop);
+    const onePass = { tempo: loop.suggestedBpm, events: PASS_2_BARS };
+    const expanded = levelToPattern(loop, PASS_2_BARS);
 
     expect(expectedTapTimes(expanded)).toHaveLength(expectedTapTimes(onePass).length * repeats);
     expect(patternDurationMs(expanded)).toBeCloseTo(patternDurationMs(onePass) * repeats, 6);
@@ -47,12 +59,14 @@ describe("levelToPattern — expansão loop vs through", () => {
   it("through: uma passada só (sem duplicação)", () => {
     const through = CURATED_LEVELS.find((lv) => lv.structure.type === "through")!;
     expect(levelRepeats(through)).toBe(1);
-    expect(levelToPattern(through).events).toHaveLength(through.pattern.length);
+    expect(levelToPattern(through, PASS_2_BARS).events).toHaveLength(PASS_2_BARS.length);
   });
 
   it("bpm passado sobrescreve o sugerido", () => {
-    expect(levelToPattern(CURATED_LEVELS[0], 123).tempo).toBe(123);
-    expect(levelToPattern(CURATED_LEVELS[0]).tempo).toBe(CURATED_LEVELS[0].suggestedBpm);
+    expect(levelToPattern(CURATED_LEVELS[0], PASS_2_BARS, 123).tempo).toBe(123);
+    expect(levelToPattern(CURATED_LEVELS[0], PASS_2_BARS).tempo).toBe(
+      CURATED_LEVELS[0].suggestedBpm
+    );
   });
 });
 
@@ -78,22 +92,32 @@ describe("computeSummary — aprovação", () => {
 });
 
 describe("levelToTex", () => {
-  it("emite fórmula de compasso e separadores de compasso", () => {
-    const tex = levelToTex(CURATED_LEVELS[1]); // through, 4 compassos
+  it("emite fórmula de compasso e separadores para passada 4/4", () => {
+    // l2 (through, 4 compassos) com passada literal de 4 compassos.
+    const pass = [q, q, h, h, q, q, q, h, q, h, h];
+    const tex = levelToTex(CURATED_LEVELS[1], pass);
     expect(tex).toContain("\\ts 4 4");
     expect(tex.match(/\|/g)).toHaveLength(3); // 4 compassos → 3 separadores
   });
 
   it("loop expande os compassos por extenso (sem sinais de repetição)", () => {
     const loop = CURATED_LEVELS[0]; // 2 compassos × 2
-    const tex = levelToTex(loop);
+    const tex = levelToTex(loop, [q, q, q, q, q, q, q, q]);
     expect(tex.match(/\|/g)).toHaveLength(3); // 4 compassos escritos
     expect(tex).not.toContain("\\ro");
   });
 
   it("semibreve vira token :1", () => {
-    const tex = levelToTex(CURATED_LEVELS[2]); // nível com semibreves
+    const tex = levelToTex(CURATED_LEVELS[2], [w, q, q, h, h, h, w]);
     expect(tex).toContain(":1 c3");
+  });
+
+  it("perfil 3/4 emite \\ts 3 4 com compassos de 3 batidas", () => {
+    // 4 compassos 3/4: | q q q | h q | q h | r q q |
+    const pass = [q, q, q, h, q, q, h, rq, q, q];
+    const tex = levelToTex(CURATED_LEVELS[5], pass);
+    expect(tex).toContain("\\ts 3 4");
+    expect(tex.match(/\|/g)).toHaveLength(3);
   });
 });
 

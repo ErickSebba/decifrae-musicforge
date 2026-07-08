@@ -65,12 +65,6 @@ export type TapResult = "perfect" | "good" | "miss";
 
 export const DEFAULT_WINDOWS: TapWindows = { perfectMs: 50, goodMs: 120 };
 
-/** Padrão fixo inicial: 8 semínimas a 80 BPM. TODO: múltiplos padrões / ajuste na UI. */
-export const DEFAULT_PATTERN: RhythmPattern = {
-  tempo: 80,
-  events: Array.from({ length: 8 }, () => ({ beats: 1 })),
-};
-
 export function msPerBeat(tempo: number): number {
   return 60000 / tempo;
 }

@@ -1,15 +1,16 @@
 import {
   patternToTex,
-  splitIntoBars,
   type RhythmEvent,
   type RhythmPattern,
   type TimeSignature,
 } from "./rhythm-engine";
+import type { FigureId } from "./rhythm-generator";
 
 /**
- * Modelo de nível do modo Tap (sub-etapa 3a): níveis curados à mão, progredindo pelo
- * vocabulário rítmico. O gerador por regra (3c) produzirá o `pattern` a partir de
- * `vocabulary`/`structure`; a persistência de desbloqueio (3b) usará `passThreshold`.
+ * Modelo de nível do modo Tap. Desde a 3c-1 o nível é um PERFIL de gerador (vocabulário +
+ * fórmula + estrutura): o padrão nasce novo a cada tentativa via generateLevelPass e circula
+ * como parâmetro explícito — as funções abaixo não sabem se a passada veio de humano ou
+ * gerador. A persistência (3b) é por level_id e independe do padrão sorteado.
  */
 
 export type LevelStructure =
@@ -19,16 +20,14 @@ export type LevelStructure =
 export interface TapLevel {
   id: string;
   name: string;
-  /** Figuras usadas (informativo p/ UI; na 3c vira insumo do gerador). */
-  vocabulary: string[];
-  /** Sempre 4/4 por enquanto — mas é dado do nível, o motor não hardcoda. */
+  /** Figuras permitidas — insumo do gerador (labels de UI em FIGURE_LABELS). */
+  vocabulary: FigureId[];
+  /** Compassos simples por enquanto (4/4, 3/4); compostos ficam pra 3c-2. */
   timeSignature: TimeSignature;
   suggestedBpm: number;
   structure: LevelStructure;
   /** Fração de Perfeito+Bom sobre o total de alvos necessária pra passar (0–1). */
   passThreshold: number;
-  /** UMA passada do ritmo (structure.bars compassos), curada à mão. */
-  pattern: RhythmEvent[];
 }
 
 /** Quantas vezes a passada é tocada. */
@@ -37,25 +36,27 @@ export function levelRepeats(level: TapLevel): number {
 }
 
 /**
- * Expande o nível num RhythmPattern pronto para o motor: `loop` repete a passada por
- * extenso (sem sinais de repetição — o eixo de tempo do cursor fica 1:1 com o clock).
- * Alvos, duração, metrônomo e tex derivam TODOS deste padrão expandido.
+ * Expande UMA passada (structure.bars compassos) num RhythmPattern pronto para o motor:
+ * `loop` repete a passada por extenso (sem sinais de repetição — o eixo de tempo do cursor
+ * fica 1:1 com o clock). Alvos, duração, metrônomo e tex derivam TODOS deste padrão
+ * expandido. `passEvents` pode vir do gerador ou de um array literal (testes).
  */
-export function levelToPattern(level: TapLevel, bpm?: number): RhythmPattern {
+export function levelToPattern(
+  level: TapLevel,
+  passEvents: RhythmEvent[],
+  bpm?: number
+): RhythmPattern {
   const repeats = levelRepeats(level);
   const events: RhythmEvent[] = [];
-  for (let i = 0; i < repeats; i++) events.push(...level.pattern);
+  for (let i = 0; i < repeats; i++) events.push(...passEvents);
   return { tempo: bpm ?? level.suggestedBpm, events };
 }
 
 /** alphaTex do nível expandido, com compassos separados pela fórmula do nível. */
-export function levelToTex(level: TapLevel, bpm?: number): string {
-  return patternToTex(levelToPattern(level, bpm), { timeSignature: level.timeSignature });
-}
-
-/** Compassos de uma passada do nível (lança se algum compasso não fechar exato). */
-export function levelBars(level: TapLevel): RhythmEvent[][] {
-  return splitIntoBars(level.pattern, level.timeSignature);
+export function levelToTex(level: TapLevel, passEvents: RhythmEvent[], bpm?: number): string {
+  return patternToTex(levelToPattern(level, passEvents, bpm), {
+    timeSignature: level.timeSignature,
+  });
 }
 
 export interface LevelSummary {
@@ -105,83 +106,70 @@ export function deriveUnlockedLevels(
 }
 
 const TS_4_4: TimeSignature = { count: 4, unit: 4 };
-
-// Atalhos de leitura para os padrões curados.
-const q: RhythmEvent = { beats: 1 }; // semínima
-const h: RhythmEvent = { beats: 2 }; // mínima
-const w: RhythmEvent = { beats: 4 }; // semibreve
-const e: RhythmEvent = { beats: 0.5 }; // colcheia
-const rq: RhythmEvent = { beats: 1, rest: true }; // pausa de semínima
+const TS_3_4: TimeSignature = { count: 3, unit: 4 };
 
 /**
- * Níveis iniciais, na ordem didática dos métodos de baixo: progressão só pelo vocabulário
- * (eixo 1), sempre 4/4. Cada compasso soma exatamente 4 batidas (validado por teste).
+ * Perfis de nível, na ordem didática dos métodos de baixo. l1–l5 completam o arco de
+ * FIGURAS em 4/4 (semínima → mínima → semibreve → pausas → colcheias); o l6 introduz o
+ * compasso 3/4 com figuras já conhecidas — uma variável nova por vez. O padrão de cada
+ * tentativa nasce de generateLevelPass (rhythm-generator.ts) a partir destes perfis.
  */
 export const CURATED_LEVELS: TapLevel[] = [
   {
     id: "l1-seminimas",
     name: "Semínimas",
-    vocabulary: ["semínima"],
+    vocabulary: ["seminima"],
     timeSignature: TS_4_4,
     suggestedBpm: 80,
     structure: { type: "loop", bars: 2, repeats: 2 },
     passThreshold: 0.8,
-    // | q q q q | q q q q |
-    pattern: [q, q, q, q, q, q, q, q],
   },
   {
     id: "l2-minimas",
     name: "Semínimas e mínimas",
-    vocabulary: ["semínima", "mínima"],
+    vocabulary: ["seminima", "minima"],
     timeSignature: TS_4_4,
     suggestedBpm: 80,
     structure: { type: "through", bars: 4 },
     passThreshold: 0.8,
-    // | q q h | h q q | q h q | h h |
-    pattern: [q, q, h, h, q, q, q, h, q, h, h],
   },
   {
     id: "l3-semibreves",
     name: "Com semibreves",
-    vocabulary: ["semínima", "mínima", "semibreve"],
+    vocabulary: ["seminima", "minima", "semibreve"],
     timeSignature: TS_4_4,
     suggestedBpm: 80,
     structure: { type: "through", bars: 4 },
     passThreshold: 0.8,
-    // | w | q q h | h h | w |
-    pattern: [w, q, q, h, h, h, w],
   },
   {
     id: "l4-pausas",
     name: "Com pausas",
-    vocabulary: ["semínima", "mínima", "pausa de semínima"],
+    vocabulary: ["seminima", "minima", "pausa-seminima"],
     timeSignature: TS_4_4,
     suggestedBpm: 80,
     structure: { type: "through", bars: 4 },
     passThreshold: 0.8,
-    // | q q r q | q r q q | h r q | r q q q |
-    pattern: [q, q, rq, q, q, rq, q, q, h, rq, q, rq, q, q, q],
   },
   {
     id: "l5-colcheias",
     name: "Colcheias",
-    vocabulary: ["semínima", "colcheia"],
+    vocabulary: ["seminima", "colcheia"],
     timeSignature: TS_4_4,
     suggestedBpm: 70,
     structure: { type: "loop", bars: 2, repeats: 2 },
     passThreshold: 0.8,
-    // | q q e e q | e e e e q q |
-    pattern: [q, q, e, e, q, e, e, e, e, q, q],
   },
   {
-    id: "l6-colcheias-pausas",
-    name: "Colcheias e pausas combinadas",
-    vocabulary: ["semínima", "mínima", "colcheia", "pausa de semínima"],
-    timeSignature: TS_4_4,
+    // Id novo de propósito (o conteúdo mudou: era "colcheias e pausas" em 4/4). A linha
+    // antiga l6-colcheias-pausas no banco fica órfã — inofensiva, o desbloqueio deste
+    // nível depende só de l5.passed.
+    id: "l6-compasso-3-4",
+    name: "Compasso 3/4",
+    vocabulary: ["seminima", "minima", "colcheia", "pausa-seminima"],
+    timeSignature: TS_3_4,
     suggestedBpm: 70,
     structure: { type: "through", bars: 4 },
     passThreshold: 0.8,
-    // | q e e q r | r q e e q | e e q q e e | q r h |
-    pattern: [q, e, e, q, rq, rq, q, e, e, q, e, e, q, q, e, e, q, rq, h],
   },
 ];
