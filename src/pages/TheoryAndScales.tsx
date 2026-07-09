@@ -9,6 +9,9 @@ import {
   majorScale,
   naturalMinorScale,
   modeScale,
+  majorPentatonic,
+  minorPentatonic,
+  bluesScale,
   diatonicTriads,
   TRIAD_QUALITY_LABELS,
 } from "../engine/theory-engine";
@@ -21,17 +24,29 @@ const BASS_4_STRING = ["E1", "A1", "D2", "G2"];
 /** Tônicas oferecidas: as 12 com armadura padrão (mesmo conjunto validado nos testes do motor). */
 const TONICS = ["C", "G", "D", "A", "E", "B", "F#", "F", "Bb", "Eb", "Ab", "Db"];
 
-type ScaleKind = "major" | "naturalMinor" | ModeId;
+type ScaleKind =
+  | "major"
+  | "naturalMinor"
+  | "majorPentatonic"
+  | "minorPentatonic"
+  | "blues"
+  | ModeId;
 
 const KIND_OPTIONS: { id: ScaleKind; label: string }[] = [
   { id: "major", label: "Maior" },
   { id: "naturalMinor", label: "Menor natural" },
+  { id: "majorPentatonic", label: "Pentatônica maior" },
+  { id: "minorPentatonic", label: "Pentatônica menor" },
+  { id: "blues", label: "Blues" },
   ...MODES.map((m) => ({ id: m as ScaleKind, label: `Modo ${MODE_LABELS[m]}` })),
 ];
 
 function scaleNotes(tonic: string, kind: ScaleKind): string[] {
   if (kind === "major") return majorScale(tonic);
   if (kind === "naturalMinor") return naturalMinorScale(tonic);
+  if (kind === "majorPentatonic") return majorPentatonic(tonic);
+  if (kind === "minorPentatonic") return minorPentatonic(tonic);
+  if (kind === "blues") return bluesScale(tonic);
   return modeScale(tonic, kind);
 }
 

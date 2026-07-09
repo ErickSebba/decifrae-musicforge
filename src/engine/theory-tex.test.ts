@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { scaleToTex, scaleToHighlight } from "./theory-tex";
-import { majorScale } from "./theory-engine";
+import { bluesScale, majorScale } from "./theory-engine";
 
 describe("scaleToTex", () => {
   it("Dó maior em clave de Fá: semínimas a partir de c2, sem virada de oitava", () => {
@@ -33,6 +33,12 @@ describe("scaleToTex", () => {
   it("letra anterior vira oitava; letra repetida (blue note) NÃO vira", () => {
     expect(scaleToTex(["B", "C"], "F")).toBe("\\clef F4\n.\n:4 b2 :4 c3");
     expect(scaleToTex(["F", "F#"], "F")).toBe("\\clef F4\n.\n:4 f2 :4 f#2");
+  });
+
+  it("C blues em Fá: blue note f#2 na MESMA oitava do 4º grau (regressão)", () => {
+    expect(scaleToTex(bluesScale("C"), "F")).toBe(
+      "\\clef F4\n.\n:4 c2 :4 eb2 :4 f2 :4 f#2 :4 g2 :4 bb2"
+    );
   });
 
   it("lança para acidente duplo (grafia teórica fora do alcance da pauta atual)", () => {

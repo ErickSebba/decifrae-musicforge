@@ -56,6 +56,24 @@ describe("TheoryAndScales — explorador de escalas (2.2)", () => {
     expect(screen.queryByText("Campo harmônico")).not.toBeInTheDocument();
   });
 
+  it("Blues de C: blue note f#2 na pauta (nunca gb) e campo harmônico oculto", () => {
+    render(<TheoryAndScales />);
+    fireEvent.change(screen.getByLabelText(/Tipo/), { target: { value: "blues" } });
+
+    const tex = screen.getByTestId("notation").textContent ?? "";
+    expect(tex).toContain(":4 f#2");
+    expect(tex).not.toContain("gb");
+    expect(screen.queryByText("Campo harmônico")).not.toBeInTheDocument();
+  });
+
+  it("Pentatônica maior de C: 5 notas, sem 4º e 7º graus", () => {
+    render(<TheoryAndScales />);
+    fireEvent.change(screen.getByLabelText(/Tipo/), { target: { value: "majorPentatonic" } });
+
+    expect(screen.getByText(/^C\s+D\s+E\s+G\s+A$/)).toBeInTheDocument();
+    expect(screen.queryByText("Campo harmônico")).not.toBeInTheDocument();
+  });
+
   it("combinação com grafia impossível (Db frígio) mostra aviso em vez de crashar", () => {
     render(<TheoryAndScales />);
     fireEvent.change(screen.getByLabelText(/Tônica/), { target: { value: "Db" } });

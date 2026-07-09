@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
+  bluesScale,
   diatonicTriads,
+  majorPentatonic,
+  minorPentatonic,
   spell,
   spelledName,
   spelledPitchClass,
@@ -359,5 +362,53 @@ describe("diatonicTriads — invariantes sobre as 12 tônicas", () => {
 
   it("tônica inválida propaga erro", () => {
     expect(() => diatonicTriads("H", "major")).toThrow();
+  });
+});
+
+describe("majorPentatonic / minorPentatonic — remoção de graus da escala-mãe", () => {
+  it("pentatônica maior de C, F e D (graus 1 2 3 5 6)", () => {
+    expect(majorPentatonic("C")).toEqual(["C", "D", "E", "G", "A"]);
+    expect(majorPentatonic("F")).toEqual(["F", "G", "A", "C", "D"]);
+    expect(majorPentatonic("D")).toEqual(["D", "E", "F#", "A", "B"]);
+  });
+
+  it("pentatônica menor de C, F e D (graus 1 b3 4 5 b7)", () => {
+    expect(minorPentatonic("C")).toEqual(["C", "Eb", "F", "G", "Bb"]);
+    expect(minorPentatonic("F")).toEqual(["F", "Ab", "Bb", "C", "Eb"]);
+    expect(minorPentatonic("D")).toEqual(["D", "F", "G", "A", "C"]);
+  });
+
+  it("notas são IDÊNTICAS aos graus da escala-mãe (reuso, não recálculo)", () => {
+    for (const tonic of ["C", "F", "D", "F#", "Bb", "Eb"]) {
+      const major = majorScale(tonic);
+      expect(majorPentatonic(tonic)).toEqual([major[0], major[1], major[2], major[4], major[5]]);
+      const minor = naturalMinorScale(tonic);
+      expect(minorPentatonic(tonic)).toEqual([minor[0], minor[2], minor[3], minor[4], minor[6]]);
+    }
+  });
+});
+
+describe("bluesScale — pentatônica menor + blue note #4", () => {
+  it("blues de C, F e Bb: 6 notas na ordem 1 b3 4 #4 5 b7", () => {
+    expect(bluesScale("C")).toEqual(["C", "Eb", "F", "F#", "G", "Bb"]);
+    expect(bluesScale("F")).toEqual(["F", "Ab", "Bb", "B", "C", "Eb"]);
+    expect(bluesScale("Bb")).toEqual(["Bb", "Db", "Eb", "E", "F", "Ab"]);
+  });
+
+  it("blue note no índice 3, grafada como #4 — NUNCA como b5", () => {
+    expect(bluesScale("C")[3]).toBe("F#");
+    expect(bluesScale("C")).not.toContain("Gb"); // b5 de C
+    expect(bluesScale("F")[3]).toBe("B");
+    expect(bluesScale("F")).not.toContain("Cb"); // b5 de F
+    expect(bluesScale("Bb")[3]).toBe("E");
+    expect(bluesScale("Bb")).not.toContain("Fb"); // b5 de Bb
+  });
+
+  it("fora da blue note, blues é exatamente a pentatônica menor", () => {
+    for (const tonic of ["C", "F", "Bb", "A", "E"]) {
+      const blues = bluesScale(tonic);
+      expect(blues).toHaveLength(6);
+      expect([...blues.slice(0, 3), ...blues.slice(4)]).toEqual(minorPentatonic(tonic));
+    }
   });
 });

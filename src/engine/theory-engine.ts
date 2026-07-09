@@ -315,6 +315,39 @@ export function modesOfMajor(majorTonic: string): Record<ModeId, string[]> {
 }
 
 // ---------------------------------------------------------------------------
+// Pentatônicas e blues (sub-etapa 2.1c) — derivadas por REMOÇÃO de graus da
+// escala-mãe já calculada, nunca recálculo de nota
+// ---------------------------------------------------------------------------
+
+/** Pentatônica maior: graus 1 2 3 5 6 da escala maior (remove 4º e 7º). */
+export function majorPentatonic(tonic: string): string[] {
+  const scale = majorScale(tonic);
+  return [scale[0], scale[1], scale[2], scale[4], scale[5]];
+}
+
+/** Pentatônica menor: graus 1 b3 4 5 b7 da menor natural (remove 2º e b6). */
+export function minorPentatonic(tonic: string): string[] {
+  const scale = naturalMinorScale(tonic);
+  return [scale[0], scale[2], scale[3], scale[4], scale[6]];
+}
+
+/**
+ * Escala blues: pentatônica menor + blue note entre o 4º e o 5º grau —
+ * ordem 1, b3, 4, #4, 5, b7 (6 notas).
+ *
+ * GRAFIA DA BLUE NOTE: #4 (4ª aumentada da tônica), NÃO b5. Decisão PEDAGÓGICA,
+ * não verdade matemática única: #4 é a convenção mais comum em material didático
+ * de baixo/guitarra e evita ambiguidade com o 5º grau real, que continua presente
+ * na escala. Calculada pelo sistema de intervalos do motor (transpose + interval),
+ * mantendo a garantia de grafia por construção: #4 de F = B, de Bb = E — nunca Cb/Fb.
+ */
+export function bluesScale(tonic: string): string[] {
+  const penta = minorPentatonic(tonic);
+  const blueNote = transpose(tonicName(tonic), interval("A", 4), "up");
+  return [...penta.slice(0, 3), blueNote, ...penta.slice(3)];
+}
+
+// ---------------------------------------------------------------------------
 // Campo harmônico (tríades diatônicas) — sub-etapa 2.1b
 // ---------------------------------------------------------------------------
 
