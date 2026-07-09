@@ -25,3 +25,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Material de pesquisa pessoal (fora do repositório por decisão)
+docs/pesquisa-teoria/
