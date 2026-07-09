@@ -26,6 +26,20 @@ export async function initDb(): Promise<Database> {
     )
   `);
 
+  // Central de Conteúdo (2.4, adiantando o Módulo 3.4 — schema DEFINITIVO: a 3.4 só
+  // adiciona a tela de revisão por cima). Espelha o tipo ContentEntry do theory-engine.
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS content_entries (
+      id            TEXT PRIMARY KEY,
+      topic         TEXT NOT NULL,
+      title         TEXT NOT NULL,
+      body          TEXT NOT NULL,
+      review_status TEXT NOT NULL,
+      note          TEXT NOT NULL DEFAULT '',
+      created_at    TEXT NOT NULL
+    )
+  `);
+
   _db = db;
   return db;
 }

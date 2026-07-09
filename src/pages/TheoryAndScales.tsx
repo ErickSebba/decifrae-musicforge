@@ -6,7 +6,6 @@ import { useScalePlayback } from "../hooks/useScalePlayback";
 import {
   MODES,
   MODE_LABELS,
-  type ModeId,
   majorScale,
   naturalMinorScale,
   modeScale,
@@ -15,8 +14,16 @@ import {
   bluesScale,
   diatonicTriads,
   TRIAD_QUALITY_LABELS,
+  type ContentEntry,
 } from "../engine/theory-engine";
 import { scalePlaybackSchedule, scaleToHighlight, scaleToTex } from "../engine/theory-tex";
+import {
+  THEORY_CONTENT,
+  THEORY_SECTION_LABELS,
+  THEORY_SECTION_ORDER,
+  type TheoryTopicId,
+} from "../data/theory-content-seed";
+import { getContentEntryByTopic } from "../db/content-entries";
 
 // Afinação padrão do baixo 4 cordas (grave→agudo).
 // TODO: extrair para config de instrumento (4/5/6 cordas) quando houver seleção de instrumento.
@@ -28,13 +35,8 @@ const TONICS = ["C", "G", "D", "A", "E", "B", "F#", "F", "Bb", "Eb", "Ab", "Db"]
 /** BPM fixo do playback (controle ajustável está fora do escopo da 2.3). */
 const PLAYBACK_BPM = 90;
 
-type ScaleKind =
-  | "major"
-  | "naturalMinor"
-  | "majorPentatonic"
-  | "minorPentatonic"
-  | "blues"
-  | ModeId;
+/** O "tipo" do seletor É o topic da Central de Conteúdo — definição única no seed. */
+type ScaleKind = TheoryTopicId;
 
 const KIND_OPTIONS: { id: ScaleKind; label: string }[] = [
   { id: "major", label: "Maior" },
@@ -110,6 +112,21 @@ export function TheoryAndScales() {
     stopRef.current();
   }, [tonic, kind, clef]);
 
+  // Seção Teoria: entrada da Central de Conteúdo do topic selecionado (mesmo seletor da
+  // Prática — trocar o tipo troca o texto). Guard de corrida: resposta de topic antigo
+  // não sobrescreve a atual.
+  const [entry, setEntry] = useState<ContentEntry | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setEntry(null);
+    void getContentEntryByTopic(kind).then((result) => {
+      if (!cancelled) setEntry(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [kind]);
+
   // Durante o playback o braço destaca SÓ a nota soando; parado, a escala inteira (2.2).
   const activeNote =
     playback.playing && playback.activeIndex !== null && view.schedule
@@ -167,78 +184,129 @@ export function TheoryAndScales() {
           </select>
         </label>
 
-        <button
-          className="rounded-md px-4 py-2 text-sm font-medium"
-          style={{
-            background: playback.playing ? "var(--color-bg-card)" : "var(--color-accent-purple)",
-            color: playback.playing ? "var(--color-text-primary)" : "#fff",
-            border: "1px solid var(--color-border)",
-            opacity: view.unwritable ? 0.5 : 1,
-          }}
-          disabled={view.unwritable}
-          onClick={(e) => {
-            e.currentTarget.blur();
-            if (playback.playing) {
-              playback.stop();
-            } else if (view.schedule) {
-              playback.start(view.schedule);
-            }
-          }}
-        >
-          {playback.playing ? "Parar" : "Tocar"}
-        </button>
-
-        {view.notes.length > 0 && (
-          <p className="text-sm pb-2" style={{ color: "var(--color-text-primary)" }}>
-            Notas:{" "}
-            <span style={{ color: "var(--color-accent-teal)" }}>{view.notes.join("  ")}</span>
-          </p>
-        )}
       </div>
 
-      {view.unwritable ? (
-        <p
-          className="rounded-lg p-4 text-sm"
-          style={{ background: "var(--color-bg-card)", color: "var(--color-text-muted)" }}
-        >
-          A grafia correta desta combinação exige acidentes duplos (ex.: B𝄫), que a pauta
-          ainda não suporta — escolha outra tônica pra este modo.
+      <section className="flex flex-col gap-3">
+        <h3 className="text-lg font-semibold" style={{ color: "var(--color-text-primary)" }}>
+          Teoria
+        </h3>
+        {entry ? (
+          <div
+            className="rounded-lg p-4 flex flex-col gap-3"
+            style={{ background: "var(--color-bg-card)" }}
+          >
+            <h4 className="text-base font-semibold" style={{ color: "var(--color-text-primary)" }}>
+              {entry.title}
+            </h4>
+            {THEORY_SECTION_ORDER.map((key) => {
+              const text = THEORY_CONTENT[kind].sections[key];
+              if (!text) return null;
+              return (
+                <p
+                  key={key}
+                  className="text-sm whitespace-pre-line"
+                  style={{ color: "var(--color-text-muted)" }}
+                >
+                  <span className="font-semibold" style={{ color: "var(--color-text-primary)" }}>
+                    {THEORY_SECTION_LABELS[key]}:
+                  </span>{" "}
+                  {text}
+                </p>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-sm" style={{ color: "var(--color-text-dim)" }}>
+            Carregando conteúdo…
+          </p>
+        )}
+      </section>
+
+      <section className="flex flex-col gap-6">
+        <h3 className="text-lg font-semibold" style={{ color: "var(--color-text-primary)" }}>
+          Prática
+        </h3>
+
+        <div className="flex flex-wrap items-center gap-4">
+          <button
+            className="rounded-md px-4 py-2 text-sm font-medium"
+            style={{
+              background: playback.playing ? "var(--color-bg-card)" : "var(--color-accent-purple)",
+              color: playback.playing ? "var(--color-text-primary)" : "#fff",
+              border: "1px solid var(--color-border)",
+              opacity: view.unwritable ? 0.5 : 1,
+            }}
+            disabled={view.unwritable}
+            onClick={(e) => {
+              e.currentTarget.blur();
+              if (playback.playing) {
+                playback.stop();
+              } else if (view.schedule) {
+                playback.start(view.schedule);
+              }
+            }}
+          >
+            {playback.playing ? "Parar" : "Tocar"}
+          </button>
+
+          {view.notes.length > 0 && (
+            <p className="text-sm" style={{ color: "var(--color-text-primary)" }}>
+              Notas:{" "}
+              <span style={{ color: "var(--color-accent-teal)" }}>{view.notes.join("  ")}</span>
+            </p>
+          )}
+        </div>
+
+        {view.unwritable ? (
+          <p
+            className="rounded-lg p-4 text-sm"
+            style={{ background: "var(--color-bg-card)", color: "var(--color-text-muted)" }}
+          >
+            A grafia correta desta combinação exige acidentes duplos (ex.: B𝄫), que a pauta
+            ainda não suporta — escolha outra tônica pra este modo.
+          </p>
+        ) : (
+          <RhythmStaff ref={staffRef} tex={view.tex!} />
+        )}
+
+        <Fretboard
+          tuning={BASS_4_STRING}
+          highlightedNotes={fretboardHighlight}
+          onNotePlayed={setLastNote}
+        />
+
+        <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+          Última nota tocada:{" "}
+          <span style={{ color: "var(--color-accent-teal)" }}>{lastNote ?? "—"}</span>
         </p>
-      ) : (
-        <RhythmStaff ref={staffRef} tex={view.tex!} />
-      )}
 
-      <Fretboard
-        tuning={BASS_4_STRING}
-        highlightedNotes={fretboardHighlight}
-        onNotePlayed={setLastNote}
-      />
-
-      <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-        Última nota tocada:{" "}
-        <span style={{ color: "var(--color-accent-teal)" }}>{lastNote ?? "—"}</span>
-      </p>
-
-      {triads && (
-        <section className="flex flex-col gap-2">
-          <h3 className="text-lg font-semibold" style={{ color: "var(--color-text-primary)" }}>
-            Campo harmônico
-          </h3>
-          <ul className="flex flex-col gap-1 text-sm">
-            {triads.map((t) => (
-              <li key={t.degree} style={{ color: "var(--color-text-muted)" }}>
-                <span className="inline-block w-10" style={{ color: "var(--color-accent-purple)" }}>
-                  {t.roman}
-                </span>
-                <span className="inline-block w-14" style={{ color: "var(--color-text-primary)" }}>
-                  {t.symbol}
-                </span>
-                {t.notes.join(" – ")} ({TRIAD_QUALITY_LABELS[t.quality]})
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+        {triads && (
+          <section className="flex flex-col gap-2">
+            <h3 className="text-lg font-semibold" style={{ color: "var(--color-text-primary)" }}>
+              Campo harmônico
+            </h3>
+            <ul className="flex flex-col gap-1 text-sm">
+              {triads.map((t) => (
+                <li key={t.degree} style={{ color: "var(--color-text-muted)" }}>
+                  <span
+                    className="inline-block w-10"
+                    style={{ color: "var(--color-accent-purple)" }}
+                  >
+                    {t.roman}
+                  </span>
+                  <span
+                    className="inline-block w-14"
+                    style={{ color: "var(--color-text-primary)" }}
+                  >
+                    {t.symbol}
+                  </span>
+                  {t.notes.join(" – ")} ({TRIAD_QUALITY_LABELS[t.quality]})
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+      </section>
     </div>
   );
 }

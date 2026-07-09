@@ -24,6 +24,23 @@ vi.mock("../engine/audio-engine", () => ({
   audioContextTime: vi.fn(() => 0),
 }));
 
+// A Central de Conteúdo real passa pelo SQLite (mockado nos testes próprios dela).
+// Aqui devolvemos entries derivadas da MESMA fonte (seed) — título real por topic.
+vi.mock("../db/content-entries", async () => {
+  const { THEORY_CONTENT } = await import("../data/theory-content-seed");
+  return {
+    getContentEntryByTopic: vi.fn(async (topic: string) => ({
+      id: `theory-${topic}`,
+      topic,
+      title: THEORY_CONTENT[topic as keyof typeof THEORY_CONTENT].title,
+      body: "",
+      reviewStatus: "confirmado",
+      note: "",
+      createdAt: "2026-07-09T00:00:00.000Z",
+    })),
+  };
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
   useAppStore.setState({ clef: "F" });
@@ -93,6 +110,36 @@ describe("TheoryAndScales — explorador de escalas (2.2)", () => {
     expect(screen.getByText(/acidentes duplos/)).toBeInTheDocument();
     expect(screen.queryByTestId("notation")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Tocar" })).toBeDisabled();
+  });
+});
+
+describe("TheoryAndScales — seção Teoria (2.4)", () => {
+  it("tem as duas seções: Teoria (acima) e Prática (abaixo)", async () => {
+    render(<TheoryAndScales />);
+    expect(screen.getByRole("heading", { name: "Teoria" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Prática" })).toBeInTheDocument();
+    await screen.findByText("Escala maior"); // evita update de estado após o teste
+  });
+
+  it("default (C maior): título do banco + seções rotuladas do conteúdo", async () => {
+    render(<TheoryAndScales />);
+
+    expect(await screen.findByText("Escala maior")).toBeInTheDocument();
+    expect(screen.getByText("Fórmula intervalar:")).toBeInTheDocument();
+    expect(screen.getByText(/1 - 2 - 3 - 4 - 5 - 6 - 7/)).toBeInTheDocument();
+    expect(screen.getByText("Aplicação prática no baixo:")).toBeInTheDocument();
+    // major é o único com a curiosidade opcional
+    expect(screen.getByText("Nota histórica/curiosidade:")).toBeInTheDocument();
+  });
+
+  it("trocar o tipo troca o texto da Teoria (mesmo seletor da Prática)", async () => {
+    render(<TheoryAndScales />);
+    fireEvent.change(screen.getByLabelText(/Tipo/), { target: { value: "dorian" } });
+
+    expect(await screen.findByText("Modo Dórico")).toBeInTheDocument();
+    expect(screen.getByText(/So What/)).toBeInTheDocument();
+    // dorian não tem curiosidade — seção opcional some
+    expect(screen.queryByText("Nota histórica/curiosidade:")).not.toBeInTheDocument();
   });
 });
 
