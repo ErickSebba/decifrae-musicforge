@@ -9,6 +9,20 @@ vi.mock("./components/Notation", () => ({
   Notation: () => <div>Notação</div>,
 }));
 
+// Mesma razão: RhythmStaff (usado pela página Teoria e Escalas desde a 2.3) instancia
+// AlphaTabApi. Stub com forwardRef pra aceitar a ref da página sem warning.
+vi.mock("./components/RhythmStaff", async () => {
+  const { forwardRef } = await import("react");
+  return {
+    RhythmStaff: forwardRef<HTMLDivElement, { tex: string }>(function RhythmStaffStub(
+      _props,
+      _ref
+    ) {
+      return <div>Partitura</div>;
+    }),
+  };
+});
+
 // Sidebar label -> conteúdo esperado dentro do <main> da página correspondente.
 // Os labels da sidebar coincidem com os títulos das páginas, então todas as queries de
 // conteúdo são escopadas ao landmark <main> (a sidebar fica no <aside>, fora dele).

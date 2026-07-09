@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { scaleToTex, scaleToHighlight } from "./theory-tex";
+import { scalePlaybackSchedule, scaleToTex, scaleToHighlight } from "./theory-tex";
 import { bluesScale, majorScale } from "./theory-engine";
 
 describe("scaleToTex", () => {
@@ -47,6 +47,45 @@ describe("scaleToTex", () => {
 
   it("lança para sequência vazia", () => {
     expect(() => scaleToTex([], "F")).toThrow(/vazia/i);
+  });
+});
+
+describe("scaleToTex — opção tempo (playback, 2.3)", () => {
+  it("emite \\tempo antes da clave quando informado (eixo MIDI = clock)", () => {
+    expect(scaleToTex(["C", "D"], "F", { tempo: 90 })).toBe(
+      "\\tempo 90\n\\clef F4\n.\n:4 c2 :4 d2"
+    );
+  });
+
+  it("sem tempo, a saída estática da 2.2 permanece idêntica", () => {
+    expect(scaleToTex(["C", "D"], "F")).toBe("\\clef F4\n.\n:4 c2 :4 d2");
+  });
+});
+
+describe("scalePlaybackSchedule (2.3)", () => {
+  it("7 notas a 60 BPM: 1ª em t=0, onsets a cada 1000ms, duração 1000, total 7000", () => {
+    const s = scalePlaybackSchedule(majorScale("C"), 60);
+    expect(s.notes.map((n) => n.timeMs)).toEqual([0, 1000, 2000, 3000, 4000, 5000, 6000]);
+    expect(s.notes.every((n) => n.durationMs === 1000)).toBe(true);
+    expect(s.totalMs).toBe(7000);
+  });
+
+  it("120 BPM: passo de 500ms", () => {
+    const s = scalePlaybackSchedule(majorScale("C"), 120);
+    expect(s.notes[1].timeMs).toBe(500);
+    expect(s.totalMs).toBe(3500);
+  });
+
+  it("blues (6 notas) gera 6 eventos, incluindo a blue note", () => {
+    const s = scalePlaybackSchedule(bluesScale("C"), 60);
+    expect(s.notes).toHaveLength(6);
+    expect(s.notes[3].name).toBe("F#");
+  });
+
+  it("oitava escrita = MESMA atribuição da pauta (F maior: 2 2 2 2 3 3 3), grafia preservada", () => {
+    const s = scalePlaybackSchedule(majorScale("F"), 90);
+    expect(s.notes.map((n) => n.writtenOctave)).toEqual([2, 2, 2, 2, 3, 3, 3]);
+    expect(s.notes.map((n) => n.name)).toEqual(["F", "G", "A", "Bb", "C", "D", "E"]);
   });
 });
 

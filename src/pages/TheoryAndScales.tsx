@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Fretboard } from "../components/Fretboard";
-import { Notation } from "../components/Notation";
+import { RhythmStaff, type RhythmStaffHandle } from "../components/RhythmStaff";
 import { useAppStore } from "../store/useAppStore";
+import { useScalePlayback } from "../hooks/useScalePlayback";
 import {
   MODES,
   MODE_LABELS,
@@ -15,7 +16,7 @@ import {
   diatonicTriads,
   TRIAD_QUALITY_LABELS,
 } from "../engine/theory-engine";
-import { scaleToHighlight, scaleToTex } from "../engine/theory-tex";
+import { scalePlaybackSchedule, scaleToHighlight, scaleToTex } from "../engine/theory-tex";
 
 // Afinação padrão do baixo 4 cordas (grave→agudo).
 // TODO: extrair para config de instrumento (4/5/6 cordas) quando houver seleção de instrumento.
@@ -23,6 +24,9 @@ const BASS_4_STRING = ["E1", "A1", "D2", "G2"];
 
 /** Tônicas oferecidas: as 12 com armadura padrão (mesmo conjunto validado nos testes do motor). */
 const TONICS = ["C", "G", "D", "A", "E", "B", "F#", "F", "Bb", "Eb", "Ab", "Db"];
+
+/** BPM fixo do playback (controle ajustável está fora do escopo da 2.3). */
+const PLAYBACK_BPM = 90;
 
 type ScaleKind =
   | "major"
@@ -67,22 +71,51 @@ export function TheoryAndScales() {
   const [kind, setKind] = useState<ScaleKind>("major");
   const [lastNote, setLastNote] = useState<string | null>(null);
 
-  // Escala + tex + highlight num memo só: modeScale/scaleToTex LANÇAM quando a grafia
-  // correta exigiria acidente duplo (ex.: Db frígio → mãe Bbb maior) — nunca regrafamos
-  // pra "caber"; a tela avisa e pede outra tônica.
+  // Cursor da pauta dirigido pelo clock do playback (updatePosition; nunca api.play()).
+  const staffRef = useRef<RhythmStaffHandle>(null);
+  const playback = useScalePlayback({
+    onFrame: (elapsedMs) => staffRef.current?.updatePosition(elapsedMs),
+    onStop: () => staffRef.current?.updatePosition(0), // cursor volta ao início, nunca fica preso
+  });
+
+  // Escala + tex + highlight + agenda num memo só: modeScale/scaleToTex LANÇAM quando a
+  // grafia correta exigiria acidente duplo (ex.: Db frígio → mãe Bbb maior) — nunca
+  // regrafamos pra "caber"; a tela avisa e pede outra tônica. O tex leva \tempo igual ao
+  // BPM da agenda (eixo MIDI do AlphaTab = clock — mecânica validada nº 3).
   const view = useMemo(() => {
     try {
       const notes = scaleNotes(tonic, kind);
       return {
         notes,
-        tex: scaleToTex(notes, clef),
+        tex: scaleToTex(notes, clef, { tempo: PLAYBACK_BPM }),
         highlight: scaleToHighlight(notes),
+        schedule: scalePlaybackSchedule(notes, PLAYBACK_BPM),
         unwritable: false,
       };
     } catch {
-      return { notes: [] as string[], tex: null, highlight: [] as string[], unwritable: true };
+      return {
+        notes: [] as string[],
+        tex: null,
+        highlight: [] as string[],
+        schedule: null,
+        unwritable: true,
+      };
     }
   }, [tonic, kind, clef]);
+
+  // Trocar tônica/tipo/clave NUNCA sobrepõe playbacks: para o atual antes da nova escala.
+  const stopRef = useRef(playback.stop);
+  stopRef.current = playback.stop;
+  useEffect(() => {
+    stopRef.current();
+  }, [tonic, kind, clef]);
+
+  // Durante o playback o braço destaca SÓ a nota soando; parado, a escala inteira (2.2).
+  const activeNote =
+    playback.playing && playback.activeIndex !== null && view.schedule
+      ? view.schedule.notes[playback.activeIndex]?.name
+      : null;
+  const fretboardHighlight = playback.playing ? (activeNote ? [activeNote] : []) : view.highlight;
 
   const triads = useMemo(
     () => (kind === "major" || kind === "naturalMinor" ? diatonicTriads(tonic, kind) : null),
@@ -134,6 +167,27 @@ export function TheoryAndScales() {
           </select>
         </label>
 
+        <button
+          className="rounded-md px-4 py-2 text-sm font-medium"
+          style={{
+            background: playback.playing ? "var(--color-bg-card)" : "var(--color-accent-purple)",
+            color: playback.playing ? "var(--color-text-primary)" : "#fff",
+            border: "1px solid var(--color-border)",
+            opacity: view.unwritable ? 0.5 : 1,
+          }}
+          disabled={view.unwritable}
+          onClick={(e) => {
+            e.currentTarget.blur();
+            if (playback.playing) {
+              playback.stop();
+            } else if (view.schedule) {
+              playback.start(view.schedule);
+            }
+          }}
+        >
+          {playback.playing ? "Parar" : "Tocar"}
+        </button>
+
         {view.notes.length > 0 && (
           <p className="text-sm pb-2" style={{ color: "var(--color-text-primary)" }}>
             Notas:{" "}
@@ -151,12 +205,12 @@ export function TheoryAndScales() {
           ainda não suporta — escolha outra tônica pra este modo.
         </p>
       ) : (
-        <Notation tex={view.tex!} />
+        <RhythmStaff ref={staffRef} tex={view.tex!} />
       )}
 
       <Fretboard
         tuning={BASS_4_STRING}
-        highlightedNotes={view.highlight}
+        highlightedNotes={fretboardHighlight}
         onNotePlayed={setLastNote}
       />
 

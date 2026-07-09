@@ -1,20 +1,31 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
+import { forwardRef } from "react";
 import { TheoryAndScales } from "./TheoryAndScales";
 import { useAppStore } from "../store/useAppStore";
+import { playTone } from "../engine/audio-engine";
 
-// O Notation real instancia AlphaTabApi (worker) — não roda no jsdom. O stub expõe o tex
-// pra podermos afirmar sobre a notação gerada.
-vi.mock("../components/Notation", () => ({
-  Notation: ({ tex }: { tex: string }) => <div data-testid="notation">{tex}</div>,
+// O RhythmStaff real instancia AlphaTabApi (worker) — não roda no jsdom. O stub expõe o
+// tex pra podermos afirmar sobre a notação gerada (updatePosition vem via ref opcional).
+vi.mock("../components/RhythmStaff", () => ({
+  RhythmStaff: forwardRef<HTMLDivElement, { tex: string }>(function RhythmStaffStub(
+    { tex },
+    _ref
+  ) {
+    return <div data-testid="notation">{tex}</div>;
+  }),
 }));
 
-// Fretboard toca som ao clicar — Web Audio ausente no jsdom.
+// Web Audio ausente no jsdom — stub da engine inteira (Fretboard + useScalePlayback).
 vi.mock("../engine/audio-engine", () => ({
   playNoteByName: vi.fn(),
+  playTone: vi.fn(() => ({ stop: vi.fn() })),
+  noteToFrequency: vi.fn(() => 440),
+  audioContextTime: vi.fn(() => 0),
 }));
 
 beforeEach(() => {
+  vi.clearAllMocks();
   useAppStore.setState({ clef: "F" });
 });
 
@@ -81,5 +92,39 @@ describe("TheoryAndScales — explorador de escalas (2.2)", () => {
 
     expect(screen.getByText(/acidentes duplos/)).toBeInTheDocument();
     expect(screen.queryByTestId("notation")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tocar" })).toBeDisabled();
+  });
+});
+
+describe("TheoryAndScales — playback (2.3)", () => {
+  it("tex da pauta leva \\tempo (eixo MIDI do cursor = clock)", () => {
+    render(<TheoryAndScales />);
+    expect(screen.getByTestId("notation").textContent).toContain("\\tempo 90");
+  });
+
+  it("Tocar agenda uma nota por grau (7 na maior) e o botão vira Parar", () => {
+    render(<TheoryAndScales />);
+    fireEvent.click(screen.getByRole("button", { name: "Tocar" }));
+
+    expect(playTone).toHaveBeenCalledTimes(7);
+    expect(screen.getByRole("button", { name: "Parar" })).toBeInTheDocument();
+  });
+
+  it("Parar volta o botão pra Tocar (estado limpo)", () => {
+    render(<TheoryAndScales />);
+    fireEvent.click(screen.getByRole("button", { name: "Tocar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Parar" }));
+
+    expect(screen.getByRole("button", { name: "Tocar" })).toBeInTheDocument();
+  });
+
+  it("trocar a tônica durante o playback para o playback atual", () => {
+    render(<TheoryAndScales />);
+    fireEvent.click(screen.getByRole("button", { name: "Tocar" }));
+    expect(screen.getByRole("button", { name: "Parar" })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/Tônica/), { target: { value: "F" } });
+
+    expect(screen.getByRole("button", { name: "Tocar" })).toBeInTheDocument();
   });
 });
