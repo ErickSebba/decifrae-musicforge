@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Fretboard } from "../components/Fretboard";
+import { PhraseEditor } from "../components/PhraseEditor";
 import { RhythmStaff, type RhythmStaffHandle } from "../components/RhythmStaff";
 import { useAppStore } from "../store/useAppStore";
 import { useScalePlayback } from "../hooks/useScalePlayback";
+import { BASS_4_STRING } from "../config/instrument";
 import {
   MODES,
   MODE_LABELS,
@@ -24,10 +26,6 @@ import {
   type TheoryTopicId,
 } from "../data/theory-content-seed";
 import { getContentEntryByTopic } from "../db/content-entries";
-
-// Afinação padrão do baixo 4 cordas (grave→agudo).
-// TODO: extrair para config de instrumento (4/5/6 cordas) quando houver seleção de instrumento.
-const BASS_4_STRING = ["E1", "A1", "D2", "G2"];
 
 /** Tônicas oferecidas: as 12 com armadura padrão (mesmo conjunto validado nos testes do motor). */
 const TONICS = ["C", "G", "D", "A", "E", "B", "F#", "F", "Bb", "Eb", "Ab", "Db"];
@@ -69,6 +67,10 @@ const selectStyle = {
  */
 export function TheoryAndScales() {
   const clef = useAppStore((s) => s.clef);
+  // Abas locais (2.5): "Explorar escalas" (Teoria + Prática) e "Editor de frases".
+  // Aba desmonta a outra — evita 2 instâncias AlphaTab + 2 braços SVG simultâneos, e o
+  // cleanup dos hooks já cancela qualquer playback ao trocar.
+  const [tab, setTab] = useState<"scales" | "phrase">("scales");
   const [tonic, setTonic] = useState("C");
   const [kind, setKind] = useState<ScaleKind>("major");
   const [lastNote, setLastNote] = useState<string | null>(null);
@@ -141,15 +143,44 @@ export function TheoryAndScales() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-3">
         <h2 className="text-2xl font-semibold" style={{ color: "var(--color-text-primary)" }}>
           Teoria e Escalas
         </h2>
-        <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-          Escolha tônica e tipo pra ver a escala na pauta (clave global:{" "}
-          {clef === "F" ? "Fá" : "Sol"}) e no braço. Clique numa posição do braço para ouvir.
-        </p>
+        <div className="flex gap-2">
+          {(
+            [
+              { id: "scales", label: "Explorar escalas" },
+              { id: "phrase", label: "Editor de frases" },
+            ] as const
+          ).map((t) => (
+            <button
+              key={t.id}
+              className="rounded-md px-3 py-1.5 text-sm font-medium"
+              style={{
+                background: tab === t.id ? "var(--color-accent-purple)" : "var(--color-bg-card)",
+                color: tab === t.id ? "#fff" : "var(--color-text-muted)",
+                border: "1px solid var(--color-border)",
+              }}
+              onClick={(e) => {
+                e.currentTarget.blur();
+                setTab(t.id);
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
+
+      {tab === "phrase" ? (
+        <PhraseEditor />
+      ) : (
+        <>
+      <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+        Escolha tônica e tipo pra ver a escala na pauta (clave global:{" "}
+        {clef === "F" ? "Fá" : "Sol"}) e no braço. Clique numa posição do braço para ouvir.
+      </p>
 
       <div className="flex flex-wrap items-end gap-4">
         <label className="flex flex-col gap-1 text-sm" style={{ color: "var(--color-text-muted)" }}>
@@ -307,6 +338,8 @@ export function TheoryAndScales() {
           </section>
         )}
       </section>
+        </>
+      )}
     </div>
   );
 }

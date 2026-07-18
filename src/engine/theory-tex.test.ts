@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { scalePlaybackSchedule, scaleToTex, scaleToHighlight } from "./theory-tex";
+import {
+  phrasePlaybackSchedule,
+  phraseToTex,
+  scalePlaybackSchedule,
+  scaleToTex,
+  scaleToHighlight,
+  type PhraseStep,
+} from "./theory-tex";
 import { bluesScale, majorScale } from "./theory-engine";
 
 describe("scaleToTex", () => {
@@ -86,6 +93,89 @@ describe("scalePlaybackSchedule (2.3)", () => {
     const s = scalePlaybackSchedule(majorScale("F"), 90);
     expect(s.notes.map((n) => n.writtenOctave)).toEqual([2, 2, 2, 2, 3, 3, 3]);
     expect(s.notes.map((n) => n.name)).toEqual(["F", "G", "A", "Bb", "C", "D", "E"]);
+  });
+});
+
+describe("phraseToTex (2.5)", () => {
+  const phrase: PhraseStep[] = [
+    { duration: "seminima", note: "C2" },
+    { duration: "pausa-seminima", note: null },
+    { duration: "colcheia", note: "D2" },
+    { duration: "minima", note: "E2" },
+  ];
+
+  it("frase mista em Fá: escrita uma 8ª acima do soante, pausa como r, \\tempo sempre", () => {
+    expect(phraseToTex(phrase, "F", 90)).toBe(
+      "\\tempo 90\n\\clef F4\n.\n:4 c3 :4 r :8 d3 :2 e3"
+    );
+  });
+
+  it("em Sol escreve mais uma 8ª acima (mecânica nº 5 — áudio não muda)", () => {
+    expect(phraseToTex(phrase, "G", 90)).toBe(
+      "\\tempo 90\n\\clef G2\n.\n:4 c4 :4 r :8 d4 :2 e4"
+    );
+  });
+
+  it("passo de nota ainda sem nota escolhida vira pausa (placeholder honesto)", () => {
+    expect(phraseToTex([{ duration: "seminima", note: null }], "F", 90)).toBe(
+      "\\tempo 90\n\\clef F4\n.\n:4 r"
+    );
+  });
+
+  it("frase vazia: só o header (a UI nem monta a pauta nesse caso)", () => {
+    expect(phraseToTex([], "F", 90)).toBe("\\tempo 90\n\\clef F4\n.\n");
+  });
+
+  it("nome com sustenido do braço entra como veio (decisão da grafia do Fretboard)", () => {
+    expect(phraseToTex([{ duration: "seminima", note: "A#1" }], "F", 90)).toBe(
+      "\\tempo 90\n\\clef F4\n.\n:4 a#2"
+    );
+  });
+});
+
+describe("phrasePlaybackSchedule (2.5)", () => {
+  it("durações heterogêneas a 60 BPM: onsets acumulados, pausa ocupa tempo sem evento", () => {
+    const s = phrasePlaybackSchedule(
+      [
+        { duration: "seminima", note: "C2" },
+        { duration: "minima", note: "D2" },
+        { duration: "colcheia", note: "E2" },
+        { duration: "pausa-seminima", note: null },
+        { duration: "seminima", note: "F2" },
+      ],
+      60
+    );
+    expect(s.notes.map((n) => n.timeMs)).toEqual([0, 1000, 3000, 4500]);
+    expect(s.notes.map((n) => n.durationMs)).toEqual([1000, 2000, 500, 1000]);
+    expect(s.notes.map((n) => n.name)).toEqual(["C", "D", "E", "F"]);
+    expect(s.notes.map((n) => n.writtenOctave)).toEqual([3, 3, 3, 3]); // soante + 1
+    expect(s.totalMs).toBe(5500);
+  });
+
+  it("passo incompleto (nota null) avança o tempo sem gerar evento", () => {
+    const s = phrasePlaybackSchedule(
+      [
+        { duration: "seminima", note: null },
+        { duration: "seminima", note: "C2" },
+      ],
+      60
+    );
+    expect(s.notes).toHaveLength(1);
+    expect(s.notes[0].timeMs).toBe(1000);
+    expect(s.totalMs).toBe(2000);
+  });
+
+  it("frase vazia e só-pausas não geram eventos nem crasham", () => {
+    expect(phrasePlaybackSchedule([], 60)).toEqual({ notes: [], totalMs: 0 });
+    const rests = phrasePlaybackSchedule(
+      [
+        { duration: "pausa-seminima", note: null },
+        { duration: "pausa-seminima", note: null },
+      ],
+      60
+    );
+    expect(rests.notes).toEqual([]);
+    expect(rests.totalMs).toBe(2000);
   });
 });
 

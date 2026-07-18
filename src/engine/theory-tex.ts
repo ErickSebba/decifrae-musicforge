@@ -11,9 +11,10 @@
  * "expandir primeiro, derivar depois", como no restante do sistema rítmico.
  */
 
-import { CLEF_TOKEN, msPerBeat, type Clef } from "./rhythm-engine";
+import { CLEF_TOKEN, DURATION_TOKEN, msPerBeat, type Clef } from "./rhythm-engine";
+import { FIGURES, type FigureId } from "./rhythm-generator";
 import { spell, spelledName, spelledPitchClass } from "./theory-engine";
-import { midiToNoteName, pitchClassName } from "./note-utils";
+import { midiToNoteName, parseNote, pitchClassName } from "./note-utils";
 
 /** Ordem de letras pra decidir virada de oitava (posição na pauta segue a LETRA). */
 const LETTER_ORDER = ["C", "D", "E", "F", "G", "A", "B"];
@@ -138,4 +139,72 @@ export function scalePlaybackSchedule(
     })),
     totalMs: written.length * mpb,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Frases próprias (2.5) — sequência heterogênea de (nota, duração) por passo
+// ---------------------------------------------------------------------------
+
+export interface PhraseStep {
+  /** Figura do catálogo do rhythm-generator (a UI da v1 oferece semínima/colcheia/mínima/pausa). */
+  duration: FigureId;
+  /**
+   * Nome + oitava SOANTE, exatamente como o Fretboard fornece no clique (ex.: "A#1").
+   * DECISÃO documentada (2.5): a frase guarda o rótulo do braço, que grafa por pitch
+   * class com sustenido — "A#" onde a teoria de uma tonalidade pediria "Bb". Sem
+   * contexto de tonalidade numa frase livre, sustenido é o default; a melhoria do
+   * rótulo do braço é backlog (registrado desde a 2.2). null = pausa.
+   */
+  note: string | null;
+}
+
+/** Passo que não soa: pausa explícita OU passo de nota ainda sem nota escolhida. */
+function isSilentStep(step: PhraseStep): boolean {
+  return Boolean(FIGURES[step.duration].rest) || step.note === null;
+}
+
+/**
+ * alphaTex da frase. `\tempo` SEMPRE presente (esta pauta é tocada com cursor —
+ * mecânica validada nº 3). Escrita: oitava soante +1 em Fá (baixo escreve uma 8ª
+ * acima do soante), +2 em Sol (mecânica nº 5). Pausas e passos incompletos viram
+ * token `r` (placeholder honesto — nunca inventa altura). Frase vazia → só o header
+ * (difere do throw do scaleToTex de propósito: frase em construção é estado normal;
+ * a UI nem monta a pauta nesse caso).
+ */
+export function phraseToTex(steps: PhraseStep[], clef: Clef, tempo: number): string {
+  const clefShift = clef === "G" ? 1 : 0;
+  const tokens = steps.map((step) => {
+    const durToken = DURATION_TOKEN[FIGURES[step.duration].beats] ?? "4";
+    if (isSilentStep(step)) return `:${durToken} r`;
+    const name = pitchClassName(step.note!).toLowerCase();
+    const writtenOctave = parseNote(step.note!).octave + 1 + clefShift;
+    return `:${durToken} ${name}${writtenOctave}`;
+  });
+  return `\\tempo ${tempo}\n\\clef ${CLEF_TOKEN[clef]}\n.\n${tokens.join(" ")}`;
+}
+
+/**
+ * Agenda de playback da frase: onset acumula beats*msPerBeat de CADA passo (durações
+ * heterogêneas, diferente da 2.3); pausas e passos incompletos avançam o tempo sem
+ * gerar evento. Retorna o MESMO ScalePlaybackSchedule da 2.3 — por isso o
+ * useScalePlayback serve sem mudança: writtenOctave = soante + 1 (clave de Fá), e o
+ * hook toca written − 1 = a altura soante clicada no braço.
+ */
+export function phrasePlaybackSchedule(steps: PhraseStep[], bpm: number): ScalePlaybackSchedule {
+  const mpb = msPerBeat(bpm);
+  const notes: ScheduledScaleNote[] = [];
+  let t = 0;
+  for (const step of steps) {
+    const durationMs = FIGURES[step.duration].beats * mpb;
+    if (!isSilentStep(step)) {
+      notes.push({
+        name: pitchClassName(step.note!),
+        writtenOctave: parseNote(step.note!).octave + 1,
+        timeMs: t,
+        durationMs,
+      });
+    }
+    t += durationMs;
+  }
+  return { notes, totalMs: t };
 }

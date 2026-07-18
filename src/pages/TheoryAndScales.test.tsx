@@ -113,6 +113,20 @@ describe("TheoryAndScales — explorador de escalas (2.2)", () => {
   });
 });
 
+describe("TheoryAndScales — abas (2.5)", () => {
+  it("aba default é Explorar escalas; trocar pra Editor de frases desmonta a Teoria", async () => {
+    render(<TheoryAndScales />);
+    expect(screen.getByRole("heading", { name: "Teoria" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Editor de frases" }));
+    expect(screen.getByRole("button", { name: "+ Passo" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Teoria" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Explorar escalas" }));
+    expect(await screen.findByText("Escala maior")).toBeInTheDocument();
+  });
+});
+
 describe("TheoryAndScales — seção Teoria (2.4)", () => {
   it("tem as duas seções: Teoria (acima) e Prática (abaixo)", async () => {
     render(<TheoryAndScales />);

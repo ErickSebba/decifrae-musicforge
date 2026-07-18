@@ -144,7 +144,8 @@ export function classifyTap(
   return { result: bestDiff <= windows.perfectMs ? "perfect" : "good", index: bestIndex };
 }
 
-const DURATION_TOKEN: Record<number, string> = { 4: "1", 2: "2", 1: "4", 0.5: "8", 0.25: "16" };
+/** Beats (em semínimas) → token de duração do alphaTex. Usado também pelo phraseToTex (2.5). */
+export const DURATION_TOKEN: Record<number, string> = { 4: "1", 2: "2", 1: "4", 0.5: "8", 0.25: "16" };
 
 /**
  * Clave de escrita (só notação — as alturas absolutas não mudam). Tokens do alphaTex
