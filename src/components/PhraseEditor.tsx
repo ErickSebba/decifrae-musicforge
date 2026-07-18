@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Fretboard } from "./Fretboard";
 import { RhythmStaff, type RhythmStaffHandle } from "./RhythmStaff";
 import { useAppStore } from "../store/useAppStore";
@@ -33,6 +33,10 @@ export function PhraseEditor() {
   const [steps, setSteps] = useState<PhraseStep[]>([]);
   const [selected, setSelected] = useState<number | null>(null);
 
+  // "Modo de entrada" (2.5b): última duração de NOTA usada — novos passos nascem com
+  // ela, pro fluxo contínuo (escolhe colcheia uma vez, escreve nota atrás de nota).
+  const lastNoteFigureRef = useRef<FigureId>("seminima");
+
   const staffRef = useRef<RhythmStaffHandle>(null);
   const playback = useScalePlayback({
     onFrame: (elapsedMs) => staffRef.current?.updatePosition(elapsedMs),
@@ -50,11 +54,13 @@ export function PhraseEditor() {
     stopRef.current();
   }, [steps, clef]);
 
-  const addStep = () => {
-    const nextIndex = steps.length;
-    setSteps([...steps, { duration: "seminima", note: null }]);
-    setSelected(nextIndex);
+  /** Insere um passo semínima pendente na posição exata e o seleciona (2.5b). */
+  const insertStepAt = (index: number) => {
+    setSteps([...steps.slice(0, index), { duration: "seminima", note: null }, ...steps.slice(index)]);
+    setSelected(index);
   };
+
+  const addStep = () => insertStepAt(steps.length);
 
   const removeStep = (index: number) => {
     setSteps(steps.filter((_, i) => i !== index));
@@ -64,24 +70,57 @@ export function PhraseEditor() {
     });
   };
 
+  /**
+   * Aplica a duração ao passo selecionado (2.5b, mecânica de editor de notação):
+   * duração de NOTA vira o "modo de entrada" e PERMANECE no passo — o avanço acontece
+   * ao escolher a nota no braço, que é o que completa o passo. PAUSA já completa o
+   * passo sozinha (não há nota a escolher), então avança na hora; se era o último,
+   * o novo passo pendente herda a última duração de NOTA usada.
+   */
   const setDurationOfSelected = (figure: FigureId) => {
     if (selected === null) return;
-    setSteps(
-      steps.map((step, i) =>
-        i === selected
-          ? { duration: figure, note: FIGURES[figure].rest ? null : step.note }
-          : step
-      )
+    const isRest = Boolean(FIGURES[figure].rest);
+    if (!isRest) lastNoteFigureRef.current = figure;
+
+    const updated = steps.map((step, i) =>
+      i === selected ? { duration: figure, note: isRest ? null : step.note } : step
     );
+    if (!isRest) {
+      setSteps(updated);
+      return;
+    }
+    const wasLast = selected === steps.length - 1;
+    setSteps(
+      wasLast ? [...updated, { duration: lastNoteFigureRef.current, note: null }] : updated
+    );
+    setSelected(selected + 1);
+  };
+
+  /** Troca o passo selecionado com o vizinho; a seleção segue o PASSO, não a posição (2.5b). */
+  const moveSelected = (delta: -1 | 1) => {
+    if (selected === null) return;
+    const target = selected + delta;
+    if (target < 0 || target >= steps.length) return;
+    const next = [...steps];
+    [next[selected], next[target]] = [next[target], next[selected]];
+    setSteps(next);
+    setSelected(target);
   };
 
   // Clique no braço define a nota do passo selecionado (braço + nome no chip como
-  // confirmação — decisão de UX). O próprio clique já toca o som (feedback auditivo).
+  // confirmação — decisão de UX; o próprio clique já toca o som) e AVANÇA a seleção
+  // (2.5b): a nota é o que completa o passo. Se era o último, o novo passo pendente
+  // herda a MESMA duração — fluxo contínuo sem re-escolher a figura a cada nota.
   const handleFretboardNote = (note: string) => {
     if (selected === null) return;
     const step = steps[selected];
     if (!step || FIGURES[step.duration].rest) return;
-    setSteps(steps.map((s, i) => (i === selected ? { ...s, note } : s)));
+    lastNoteFigureRef.current = step.duration;
+
+    const updated = steps.map((s, i) => (i === selected ? { ...s, note } : s));
+    const wasLast = selected === steps.length - 1;
+    setSteps(wasLast ? [...updated, { duration: step.duration, note: null }] : updated);
+    setSelected(selected + 1);
   };
 
   // Braço: durante o playback destaca SÓ a nota soando; parado, a nota do passo selecionado.
@@ -113,8 +152,20 @@ export function PhraseEditor() {
           const noteLabel = isRest ? "pausa" : (step.note ?? "?");
           const isSelected = selected === i;
           return (
+            <Fragment key={i}>
+            {/* Inserção entre passos (2.5b): empurra os seguintes, nada é sobrescrito */}
+            <button
+              aria-label={`Inserir passo na posição ${i + 1}`}
+              className="rounded-md px-1.5 py-1 text-xs"
+              style={{ color: "var(--color-text-dim)", border: "1px dashed var(--color-border)" }}
+              onClick={(e) => {
+                e.currentTarget.blur();
+                insertStepAt(i);
+              }}
+            >
+              +
+            </button>
             <div
-              key={i}
               role="button"
               tabIndex={0}
               aria-label={`Passo ${i + 1}`}
@@ -143,6 +194,7 @@ export function PhraseEditor() {
                 ×
               </button>
             </div>
+            </Fragment>
           );
         })}
 
@@ -177,6 +229,35 @@ export function PhraseEditor() {
               {FIGURE_LABELS[figure]}
             </button>
           ))}
+
+          {/* Mover o passo selecionado (2.5b): ↑ = pra trás, ↓ = pra frente */}
+          <button
+            aria-label="Mover passo pra trás"
+            className="rounded-md px-2.5 py-1.5 text-sm"
+            style={{ ...chipButtonStyle(false), opacity: selected === 0 ? 0.4 : 1 }}
+            disabled={selected === 0}
+            onClick={(e) => {
+              e.currentTarget.blur();
+              moveSelected(-1);
+            }}
+          >
+            ↑
+          </button>
+          <button
+            aria-label="Mover passo pra frente"
+            className="rounded-md px-2.5 py-1.5 text-sm"
+            style={{
+              ...chipButtonStyle(false),
+              opacity: selected === steps.length - 1 ? 0.4 : 1,
+            }}
+            disabled={selected === steps.length - 1}
+            onClick={(e) => {
+              e.currentTarget.blur();
+              moveSelected(1);
+            }}
+          >
+            ↓
+          </button>
         </div>
       )}
 

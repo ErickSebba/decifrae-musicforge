@@ -56,15 +56,17 @@ describe("PhraseEditor — grade de passos", () => {
     expect(screen.getByTestId("staff").textContent).toContain(":4 a2"); // escrita = soante + 1
   });
 
-  it("mudar a duração pra pausa limpa a nota e o clique no braço não grava em pausa", () => {
+  it("pausa limpa a nota do passo; clique no braço não grava em passo-pausa", () => {
     render(<PhraseEditor />);
     addStep();
-    clickFret("E1 traste 5 — A1");
-    fireEvent.click(screen.getByRole("button", { name: "pausa de semínima" }));
+    clickFret("E1 traste 5 — A1"); // grava A1 e avança
+    fireEvent.click(screen.getByRole("button", { name: "Passo 1" })); // volta pro passo com nota
+    fireEvent.click(screen.getByRole("button", { name: "pausa de semínima" })); // limpa e avança
 
     const chip = screen.getByRole("button", { name: "Passo 1" });
     expect(within(chip).getByText("pausa")).toBeInTheDocument();
 
+    fireEvent.click(chip); // re-seleciona o passo-pausa
     clickFret("E1 traste 5 — A1"); // toca o som, mas não vira nota do passo-pausa
     expect(within(chip).getByText("pausa")).toBeInTheDocument();
     expect(screen.getByTestId("staff").textContent).toContain(":4 r");
@@ -73,18 +75,106 @@ describe("PhraseEditor — grade de passos", () => {
   it("remover passo do meio mantém o estado dos demais consistente", () => {
     render(<PhraseEditor />);
     addStep();
-    clickFret("E1 traste 5 — A1"); // passo 1 = A1
-    addStep();
-    clickFret("A1 traste 3 — C2"); // passo 2 = C2
-    addStep();
-    clickFret("D2 traste 2 — E2"); // passo 3 = E2
+    clickFret("E1 traste 5 — A1"); // passo 1 = A1, cria passo 2
+    clickFret("A1 traste 3 — C2"); // passo 2 = C2, cria passo 3
+    clickFret("D2 traste 2 — E2"); // passo 3 = E2, cria passo 4 pendente
 
     fireEvent.click(screen.getByRole("button", { name: "Remover passo 2" }));
 
-    expect(screen.queryByRole("button", { name: "Passo 3" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^Passo \d+$/ })).toHaveLength(3); // A1, E2, ?
     expect(within(screen.getByRole("button", { name: "Passo 1" })).getByText("A1")).toBeInTheDocument();
     expect(within(screen.getByRole("button", { name: "Passo 2" })).getByText("E2")).toBeInTheDocument();
     expect(screen.getByTestId("staff").textContent).not.toContain("c3"); // C2 escrita saiu
+  });
+});
+
+describe("PhraseEditor — 2.5b: avanço automático, mover e inserir", () => {
+  it("duração de nota aplica e PERMANECE no passo (o avanço acontece na escolha da nota)", () => {
+    render(<PhraseEditor />);
+    addStep();
+    fireEvent.click(screen.getByRole("button", { name: "colcheia" }));
+
+    expect(screen.getByText("Duração do passo 1:")).toBeInTheDocument(); // não avançou
+    expect(screen.getAllByRole("button", { name: /^Passo \d+$/ })).toHaveLength(1); // não criou passo
+  });
+
+  it("escolher a nota avança criando o próximo passo com a MESMA duração (fluxo contínuo)", () => {
+    render(<PhraseEditor />);
+    addStep();
+    fireEvent.click(screen.getByRole("button", { name: "colcheia" }));
+    clickFret("E1 traste 5 — A1"); // grava A1 colcheia e avança
+
+    const step2 = screen.getByRole("button", { name: "Passo 2" });
+    expect(within(step2).getByText("colcheia")).toBeInTheDocument(); // herdou a duração
+    expect(within(step2).getByText("?")).toBeInTheDocument();
+    expect(screen.getByText("Duração do passo 2:")).toBeInTheDocument();
+
+    clickFret("A1 traste 3 — C2"); // segue o fluxo sem re-escolher a figura
+    expect(screen.getByTestId("staff").textContent).toContain(":8 a2 :8 c3");
+  });
+
+  it("pausa completa o passo e avança; o novo passo herda a última duração de NOTA", () => {
+    render(<PhraseEditor />);
+    addStep();
+    fireEvent.click(screen.getByRole("button", { name: "colcheia" }));
+    clickFret("E1 traste 5 — A1"); // passo 1 = A1 colcheia; passo 2 colcheia pendente
+    fireEvent.click(screen.getByRole("button", { name: "pausa de semínima" })); // passo 2 vira pausa
+
+    const step3 = screen.getByRole("button", { name: "Passo 3" });
+    expect(within(step3).getByText("colcheia")).toBeInTheDocument(); // herda a duração de nota
+    expect(screen.getByText("Duração do passo 3:")).toBeInTheDocument();
+  });
+
+  it("mover com ↓ troca com o vizinho e a seleção segue o passo movido", () => {
+    render(<PhraseEditor />);
+    addStep();
+    clickFret("E1 traste 5 — A1"); // passo 1 = A1, cria passo 2
+    clickFret("A1 traste 3 — C2"); // passo 2 = C2, cria passo 3 pendente
+    fireEvent.click(screen.getByRole("button", { name: "Passo 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mover passo pra frente" }));
+
+    expect(within(screen.getByRole("button", { name: "Passo 1" })).getByText("C2")).toBeInTheDocument();
+    expect(within(screen.getByRole("button", { name: "Passo 2" })).getByText("A1")).toBeInTheDocument();
+    expect(screen.getByText("Duração do passo 2:")).toBeInTheDocument(); // seguiu o A1
+  });
+
+  it("setas desabilitam nas pontas", () => {
+    render(<PhraseEditor />);
+    addStep();
+    addStep();
+    fireEvent.click(screen.getByRole("button", { name: "Passo 1" }));
+    expect(screen.getByRole("button", { name: "Mover passo pra trás" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Mover passo pra frente" })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Passo 2" }));
+    expect(screen.getByRole("button", { name: "Mover passo pra trás" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Mover passo pra frente" })).toBeDisabled();
+  });
+
+  it("inserir entre dois passos empurra os seguintes e seleciona o novo", () => {
+    render(<PhraseEditor />);
+    addStep();
+    clickFret("E1 traste 5 — A1"); // passo 1 = A1, cria passo 2
+    clickFret("A1 traste 3 — C2"); // passo 2 = C2, cria passo 3 pendente
+    fireEvent.click(screen.getByRole("button", { name: "Inserir passo na posição 2" }));
+
+    expect(within(screen.getByRole("button", { name: "Passo 1" })).getByText("A1")).toBeInTheDocument();
+    expect(within(screen.getByRole("button", { name: "Passo 2" })).getByText("?")).toBeInTheDocument();
+    expect(within(screen.getByRole("button", { name: "Passo 3" })).getByText("C2")).toBeInTheDocument();
+    expect(screen.getByText("Duração do passo 2:")).toBeInTheDocument();
+  });
+
+  it("mover durante o playback para o playback", () => {
+    render(<PhraseEditor />);
+    addStep();
+    clickFret("E1 traste 5 — A1");
+    clickFret("A1 traste 3 — C2");
+    fireEvent.click(screen.getByRole("button", { name: "Passo 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tocar" }));
+    expect(screen.getByRole("button", { name: "Parar" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Mover passo pra frente" }));
+    expect(screen.getByRole("button", { name: "Tocar" })).toBeInTheDocument();
   });
 });
 
@@ -92,9 +182,8 @@ describe("PhraseEditor — playback", () => {
   it("Tocar agenda tom só pros passos com nota (pausa em silêncio) e vira Parar", () => {
     render(<PhraseEditor />);
     addStep();
-    clickFret("E1 traste 5 — A1");
-    addStep();
-    fireEvent.click(screen.getByRole("button", { name: "pausa de semínima" }));
+    clickFret("E1 traste 5 — A1"); // A1 + pendente criado pelo avanço
+    fireEvent.click(screen.getByRole("button", { name: "pausa de semínima" })); // pendente vira pausa
 
     fireEvent.click(screen.getByRole("button", { name: "Tocar" }));
 
