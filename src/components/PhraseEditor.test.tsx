@@ -25,7 +25,7 @@ vi.mock("../engine/audio-engine", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useAppStore.setState({ clef: "F" });
+  useAppStore.setState({ clef: "F", staveDisplay: "score" });
 });
 
 function addStep() {
@@ -175,6 +175,32 @@ describe("PhraseEditor — 2.5b: avanço automático, mover e inserir", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Mover passo pra frente" }));
     expect(screen.getByRole("button", { name: "Tocar" })).toBeInTheDocument();
+  });
+});
+
+describe("PhraseEditor — visualização (2.6)", () => {
+  it("modo Tablatura usa a posição EXATA clicada e o \\tuning do instrumento", () => {
+    useAppStore.setState({ staveDisplay: "tab" });
+    render(<PhraseEditor />);
+    addStep();
+    clickFret("A1 traste 3 — C2");
+
+    const tex = screen.getByTestId("staff").textContent ?? "";
+    expect(tex).toContain("\\tuning g2 d2 a1 e1");
+    expect(tex).toContain(":4 3.3"); // casa 3 da corda A — exatamente onde clicou
+  });
+
+  it("trocar o modo pelo toggle troca o tex e PARA o playback ativo", () => {
+    render(<PhraseEditor />);
+    addStep();
+    clickFret("E1 traste 5 — A1");
+    fireEvent.click(screen.getByRole("button", { name: "Tocar" }));
+    expect(screen.getByRole("button", { name: "Parar" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Tablatura" }));
+
+    expect(screen.getByRole("button", { name: "Tocar" })).toBeInTheDocument(); // parou
+    expect(screen.getByTestId("staff").textContent).toContain(":4 5.4"); // E, casa 5
   });
 });
 

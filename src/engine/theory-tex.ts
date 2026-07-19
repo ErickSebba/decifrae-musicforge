@@ -14,7 +14,7 @@
 import { CLEF_TOKEN, DURATION_TOKEN, msPerBeat, type Clef } from "./rhythm-engine";
 import { FIGURES, type FigureId } from "./rhythm-generator";
 import { spell, spelledName, spelledPitchClass } from "./theory-engine";
-import { midiToNoteName, parseNote, pitchClassName } from "./note-utils";
+import { midiToNoteName, noteToMidi, parseNote, pitchClassName } from "./note-utils";
 
 /** Ordem de letras pra decidir virada de oitava (posição na pauta segue a LETRA). */
 const LETTER_ORDER = ["C", "D", "E", "F", "G", "A", "B"];
@@ -156,6 +156,12 @@ export interface PhraseStep {
    * rótulo do braço é backlog (registrado desde a 2.2). null = pausa.
    */
   note: string | null;
+  /**
+   * Posição EXATA clicada no braço (2.6) — a tablatura usa ela (a mesma altura existe
+   * em várias posições; a tab tem que mostrar a casa que o usuário escolheu).
+   * Ausente → digitação automática como fallback.
+   */
+  position?: FretPosition;
 }
 
 /** Passo que não soa: pausa explícita OU passo de nota ainda sem nota escolhida. */
@@ -190,6 +196,100 @@ export function phraseToTex(steps: PhraseStep[], clef: Clef, tempo: number): str
  * useScalePlayback serve sem mudança: writtenOctave = soante + 1 (clave de Fá), e o
  * hook toca written − 1 = a altura soante clicada no braço.
  */
+// ---------------------------------------------------------------------------
+// Tablatura (2.6) — variantes FRETTED dos geradores de tex
+//
+// Achado da investigação (AlphaTab 1.8.3): staff com notas por altura ("Pitched")
+// tem a afinação ZERADA pelo importador e o renderer de tab só nasce com
+// tuning.length > 0 — tab EXIGE notação `casa.corda` + \tuning. O visual da
+// PARTITURA é preservado com \displaytranspose (12 em Fá = escrita +1 8ª; 24 em
+// Sol = +2), reproduzindo as convenções já validadas do app.
+// Enquanto scaleToTex (pitched) e scaleToFrettedTex coexistirem, o teste de
+// consistência de ALTURAS entre os dois é o trava-divergência (consolidar num
+// gerador único é backlog registrado no CONTEXTO).
+// ---------------------------------------------------------------------------
+
+/** Posição no braço: índice da corda (0 = mais grave, ordem da afinação) + casa. */
+export interface FretPosition {
+  stringIndex: number;
+  fret: number;
+}
+
+/**
+ * Digitação automática v1: a corda que dá a MENOR casa (>= 0); empate impossível em
+ * afinações reais, mas o critério é a corda mais aguda. null se a altura está abaixo
+ * da corda mais grave (não existe no instrumento).
+ */
+export function fretPositionFor(soundingMidi: number, tuning: string[]): FretPosition | null {
+  let best: FretPosition | null = null;
+  tuning.forEach((openString, stringIndex) => {
+    const fret = soundingMidi - noteToMidi(openString);
+    if (fret >= 0 && (best === null || fret <= best.fret)) {
+      best = { stringIndex, fret };
+    }
+  });
+  return best;
+}
+
+/** Header comum dos tex fretted: tempo + afinação (aguda→grave) + transposição de escrita + clave. */
+function frettedHeader(clef: Clef, tempo: number, tuning: string[]): string {
+  const tuningTokens = [...tuning]
+    .reverse()
+    .map((n) => n.toLowerCase())
+    .join(" ");
+  const displayTranspose = clef === "G" ? 24 : 12;
+  return `\\tempo ${tempo}\n\\tuning ${tuningTokens}\n\\displaytranspose ${displayTranspose}\n\\clef ${CLEF_TOKEN[clef]}\n.\n`;
+}
+
+/** Token fretted: alphaTex conta cordas da mais aguda (1) pra mais grave. */
+function frettedToken(position: FretPosition, durationToken: string, stringCount: number): string {
+  return `:${durationToken} ${position.fret}.${stringCount - position.stringIndex}`;
+}
+
+/**
+ * Variante fretted do scaleToTex: mesma atribuição de oitava escrita
+ * (assignWrittenOctaves), soante = escrita − 1 8ª (convenção do baixo), posição via
+ * digitação automática. Lança erro claro se alguma nota não existe no instrumento.
+ */
+export function scaleToFrettedTex(
+  notes: string[],
+  clef: Clef,
+  opts: { tempo: number; tuning: string[]; startOctave?: number }
+): string {
+  const written = assignWrittenOctaves(notes, opts.startOctave ?? 2);
+  const tokens = written.map((w) => {
+    const soundingMidi = noteToMidi(`${w.name}${w.octave}`) - 12;
+    const position = fretPositionFor(soundingMidi, opts.tuning);
+    if (!position) {
+      throw new Error(
+        `Nota fora do alcance do instrumento: ${w.name}${w.octave} (soante abaixo da corda mais grave)`
+      );
+    }
+    return frettedToken(position, "4", opts.tuning.length);
+  });
+  return frettedHeader(clef, opts.tempo, opts.tuning) + tokens.join(" ");
+}
+
+/**
+ * Variante fretted do phraseToTex: usa a posição EXATA clicada de cada passo
+ * (fallback: digitação automática pela altura); pausas e passos pendentes viram `r`.
+ */
+export function phraseToFrettedTex(
+  steps: PhraseStep[],
+  clef: Clef,
+  tempo: number,
+  tuning: string[]
+): string {
+  const tokens = steps.map((step) => {
+    const durToken = DURATION_TOKEN[FIGURES[step.duration].beats] ?? "4";
+    if (isSilentStep(step)) return `:${durToken} r`;
+    const position = step.position ?? fretPositionFor(noteToMidi(step.note!), tuning);
+    if (!position) return `:${durToken} r`; // inalcançável no instrumento: silencioso, defensivo
+    return frettedToken(position, durToken, tuning.length);
+  });
+  return frettedHeader(clef, tempo, tuning) + tokens.join(" ");
+}
+
 export function phrasePlaybackSchedule(steps: PhraseStep[], bpm: number): ScalePlaybackSchedule {
   const mpb = msPerBeat(bpm);
   const notes: ScheduledScaleNote[] = [];

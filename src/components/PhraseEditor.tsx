@@ -1,10 +1,17 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Fretboard } from "./Fretboard";
 import { RhythmStaff, type RhythmStaffHandle } from "./RhythmStaff";
+import { StaveDisplayToggle } from "./StaveDisplayToggle";
 import { useAppStore } from "../store/useAppStore";
 import { useScalePlayback } from "../hooks/useScalePlayback";
 import { FIGURES, FIGURE_LABELS, type FigureId } from "../engine/rhythm-generator";
-import { phrasePlaybackSchedule, phraseToTex, type PhraseStep } from "../engine/theory-tex";
+import {
+  phrasePlaybackSchedule,
+  phraseToFrettedTex,
+  phraseToTex,
+  type FretPosition,
+  type PhraseStep,
+} from "../engine/theory-tex";
 import { pitchClassName } from "../engine/note-utils";
 import { BASS_4_STRING } from "../config/instrument";
 
@@ -30,6 +37,8 @@ const chipButtonStyle = (active: boolean) =>
  */
 export function PhraseEditor() {
   const clef = useAppStore((s) => s.clef);
+  const staveDisplay = useAppStore((s) => s.staveDisplay);
+  const setStaveDisplay = useAppStore((s) => s.setStaveDisplay);
   const [steps, setSteps] = useState<PhraseStep[]>([]);
   const [selected, setSelected] = useState<number | null>(null);
 
@@ -43,16 +52,25 @@ export function PhraseEditor() {
     onStop: () => staffRef.current?.updatePosition(0),
   });
 
-  const tex = useMemo(() => phraseToTex(steps, clef, PHRASE_BPM), [steps, clef]);
+  // Modo "score" mantém o tex pitched original; tab/ambas usam o tex fretted (2.6) —
+  // a tab mostra a POSIÇÃO clicada de cada passo.
+  const tex = useMemo(
+    () =>
+      staveDisplay === "score"
+        ? phraseToTex(steps, clef, PHRASE_BPM)
+        : phraseToFrettedTex(steps, clef, PHRASE_BPM, BASS_4_STRING),
+    [steps, clef, staveDisplay]
+  );
   const schedule = useMemo(() => phrasePlaybackSchedule(steps, PHRASE_BPM), [steps]);
 
-  // Editar qualquer coisa (passos ou clave) durante o playback PARA o playback antes —
-  // nunca dois playbacks nem cursor correndo sobre um tex que acabou de trocar (2.3).
+  // Editar qualquer coisa (passos, clave OU modo de exibição) durante o playback PARA
+  // o playback antes — trocar o modo re-renderiza a pauta inteira e o cursor não pode
+  // correr sobre um render recriado (mesma classe de bug de sincronia do Módulo 1).
   const stopRef = useRef(playback.stop);
   stopRef.current = playback.stop;
   useEffect(() => {
     stopRef.current();
-  }, [steps, clef]);
+  }, [steps, clef, staveDisplay]);
 
   /** Insere um passo semínima pendente na posição exata e o seleciona (2.5b). */
   const insertStepAt = (index: number) => {
@@ -111,13 +129,14 @@ export function PhraseEditor() {
   // confirmação — decisão de UX; o próprio clique já toca o som) e AVANÇA a seleção
   // (2.5b): a nota é o que completa o passo. Se era o último, o novo passo pendente
   // herda a MESMA duração — fluxo contínuo sem re-escolher a figura a cada nota.
-  const handleFretboardNote = (note: string) => {
+  const handleFretboardNote = (note: string, position: FretPosition) => {
     if (selected === null) return;
     const step = steps[selected];
     if (!step || FIGURES[step.duration].rest) return;
     lastNoteFigureRef.current = step.duration;
 
-    const updated = steps.map((s, i) => (i === selected ? { ...s, note } : s));
+    // Guarda também a POSIÇÃO clicada (2.6): a tab mostra a casa que o usuário escolheu.
+    const updated = steps.map((s, i) => (i === selected ? { ...s, note, position } : s));
     const wasLast = selected === steps.length - 1;
     setSteps(wasLast ? [...updated, { duration: step.duration, note: null }] : updated);
     setSelected(selected + 1);
@@ -262,7 +281,8 @@ export function PhraseEditor() {
       )}
 
       {/* Tocar/Parar — frase vazia ou só-pausas é válida (silêncio), nunca trava */}
-      <div>
+      <div className="flex flex-wrap items-center gap-4">
+        <StaveDisplayToggle value={staveDisplay} onChange={setStaveDisplay} />
         <button
           className="rounded-md px-4 py-2 text-sm font-medium"
           style={{
@@ -292,7 +312,7 @@ export function PhraseEditor() {
           A frase está vazia — adicione passos pra ver a partitura aqui.
         </p>
       ) : (
-        <RhythmStaff ref={staffRef} tex={tex} />
+        <RhythmStaff ref={staffRef} tex={tex} displayMode={staveDisplay} />
       )}
 
       <Fretboard tuning={BASS_4_STRING} highlightedNotes={highlight} onNotePlayed={handleFretboardNote} />

@@ -22,7 +22,8 @@ describe("Fretboard", () => {
     // 5ª casa da corda E = A1.
     fireEvent.click(screen.getByRole("button", { name: "E1 traste 5 — A1" }));
 
-    expect(onNotePlayed).toHaveBeenCalledWith("A1");
+    // Desde a 2.6 o callback também entrega a posição exata clicada (corda/casa).
+    expect(onNotePlayed).toHaveBeenCalledWith("A1", { stringIndex: 0, fret: 5 });
     expect(playNoteByName).toHaveBeenCalledWith("A", 1);
   });
 

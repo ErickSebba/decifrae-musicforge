@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Fretboard } from "../components/Fretboard";
 import { PhraseEditor } from "../components/PhraseEditor";
 import { RhythmStaff, type RhythmStaffHandle } from "../components/RhythmStaff";
+import { StaveDisplayToggle } from "../components/StaveDisplayToggle";
 import { useAppStore } from "../store/useAppStore";
 import { useScalePlayback } from "../hooks/useScalePlayback";
 import { BASS_4_STRING } from "../config/instrument";
@@ -18,7 +19,12 @@ import {
   TRIAD_QUALITY_LABELS,
   type ContentEntry,
 } from "../engine/theory-engine";
-import { scalePlaybackSchedule, scaleToHighlight, scaleToTex } from "../engine/theory-tex";
+import {
+  scalePlaybackSchedule,
+  scaleToFrettedTex,
+  scaleToHighlight,
+  scaleToTex,
+} from "../engine/theory-tex";
 import {
   THEORY_CONTENT,
   THEORY_SECTION_LABELS,
@@ -32,6 +38,13 @@ const TONICS = ["C", "G", "D", "A", "E", "B", "F#", "F", "Bb", "Eb", "Ab", "Db"]
 
 /** BPM fixo do playback (controle ajustável está fora do escopo da 2.3). */
 const PLAYBACK_BPM = 90;
+
+/**
+ * Oitava ESCRITA da 1ª nota (clave de Fá). 3 desde a 2.6 (decisão do usuário):
+ * escrita c3.., soante C2.. — resolve o registro grave demais da 2.3 E torna a
+ * tablatura possível (soante abaixo de E1 não existe no baixo).
+ */
+const SCALE_START_OCTAVE = 3;
 
 /** O "tipo" do seletor É o topic da Central de Conteúdo — definição única no seed. */
 type ScaleKind = TheoryTopicId;
@@ -67,6 +80,8 @@ const selectStyle = {
  */
 export function TheoryAndScales() {
   const clef = useAppStore((s) => s.clef);
+  const staveDisplay = useAppStore((s) => s.staveDisplay);
+  const setStaveDisplay = useAppStore((s) => s.setStaveDisplay);
   // Abas locais (2.5): "Explorar escalas" (Teoria + Prática) e "Editor de frases".
   // Aba desmonta a outra — evita 2 instâncias AlphaTab + 2 braços SVG simultâneos, e o
   // cleanup dos hooks já cancela qualquer playback ao trocar.
@@ -91,9 +106,20 @@ export function TheoryAndScales() {
       const notes = scaleNotes(tonic, kind);
       return {
         notes,
-        tex: scaleToTex(notes, clef, { tempo: PLAYBACK_BPM }),
+        // "score" = tex pitched original; tab/ambas = tex fretted (2.6) com digitação
+        // automática — a partitura fica visualmente igual via \displaytranspose.
+        tex:
+          staveDisplay === "score"
+            ? scaleToTex(notes, clef, { tempo: PLAYBACK_BPM, startOctave: SCALE_START_OCTAVE })
+            : scaleToFrettedTex(notes, clef, {
+                tempo: PLAYBACK_BPM,
+                tuning: BASS_4_STRING,
+                startOctave: SCALE_START_OCTAVE,
+              }),
         highlight: scaleToHighlight(notes),
-        schedule: scalePlaybackSchedule(notes, PLAYBACK_BPM),
+        schedule: scalePlaybackSchedule(notes, PLAYBACK_BPM, {
+          startOctave: SCALE_START_OCTAVE,
+        }),
         unwritable: false,
       };
     } catch {
@@ -105,14 +131,14 @@ export function TheoryAndScales() {
         unwritable: true,
       };
     }
-  }, [tonic, kind, clef]);
+  }, [tonic, kind, clef, staveDisplay]);
 
   // Trocar tônica/tipo/clave NUNCA sobrepõe playbacks: para o atual antes da nova escala.
   const stopRef = useRef(playback.stop);
   stopRef.current = playback.stop;
   useEffect(() => {
     stopRef.current();
-  }, [tonic, kind, clef]);
+  }, [tonic, kind, clef, staveDisplay]);
 
   // Seção Teoria: entrada da Central de Conteúdo do topic selecionado (mesmo seletor da
   // Prática — trocar o tipo troca o texto). Guard de corrida: resposta de topic antigo
@@ -259,6 +285,7 @@ export function TheoryAndScales() {
         </h3>
 
         <div className="flex flex-wrap items-center gap-4">
+          <StaveDisplayToggle value={staveDisplay} onChange={setStaveDisplay} />
           <button
             className="rounded-md px-4 py-2 text-sm font-medium"
             style={{
@@ -297,7 +324,7 @@ export function TheoryAndScales() {
             ainda não suporta — escolha outra tônica pra este modo.
           </p>
         ) : (
-          <RhythmStaff ref={staffRef} tex={view.tex!} />
+          <RhythmStaff ref={staffRef} tex={view.tex!} displayMode={staveDisplay} />
         )}
 
         <Fretboard

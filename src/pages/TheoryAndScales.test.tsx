@@ -43,13 +43,14 @@ vi.mock("../db/content-entries", async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useAppStore.setState({ clef: "F" });
+  useAppStore.setState({ clef: "F", staveDisplay: "score" });
 });
 
 describe("TheoryAndScales — explorador de escalas (2.2)", () => {
   it("renderiza Dó maior por padrão com campo harmônico", () => {
     render(<TheoryAndScales />);
-    expect(screen.getByTestId("notation").textContent).toContain(":4 c2");
+    // Âncora c3 desde a 2.6 (decisão: +1 8ª pra viabilizar tab e registro audível).
+    expect(screen.getByTestId("notation").textContent).toContain(":4 c3");
     expect(screen.getByText(/^C\s+D\s+E\s+F\s+G\s+A\s+B$/)).toBeInTheDocument();
     expect(screen.getByText("Campo harmônico")).toBeInTheDocument();
     expect(within(screen.getByRole("list")).getByText("vii°")).toBeInTheDocument();
@@ -60,7 +61,7 @@ describe("TheoryAndScales — explorador de escalas (2.2)", () => {
     fireEvent.change(screen.getByLabelText(/Tônica/), { target: { value: "F" } });
 
     const tex = screen.getByTestId("notation").textContent ?? "";
-    expect(tex).toContain(":4 bb2");
+    expect(tex).toContain(":4 bb3");
     expect(tex).not.toContain("a#");
     const triadList = within(screen.getByRole("list"));
     expect(triadList.getByText("IV")).toBeInTheDocument();
@@ -73,14 +74,14 @@ describe("TheoryAndScales — explorador de escalas (2.2)", () => {
     render(<TheoryAndScales />);
     const tex = screen.getByTestId("notation").textContent ?? "";
     expect(tex).toContain("\\clef G2");
-    expect(tex).toContain(":4 c3");
+    expect(tex).toContain(":4 c4");
   });
 
   it("modo gregoriano esconde o campo harmônico (escopo 2.1b: só maior/menor natural)", () => {
     render(<TheoryAndScales />);
     fireEvent.change(screen.getByLabelText(/Tipo/), { target: { value: "dorian" } });
 
-    expect(screen.getByTestId("notation").textContent).toContain(":4 d2");
+    expect(screen.getByTestId("notation").textContent).toContain(":4 d3");
     expect(screen.queryByText("Campo harmônico")).not.toBeInTheDocument();
   });
 
@@ -89,7 +90,7 @@ describe("TheoryAndScales — explorador de escalas (2.2)", () => {
     fireEvent.change(screen.getByLabelText(/Tipo/), { target: { value: "blues" } });
 
     const tex = screen.getByTestId("notation").textContent ?? "";
-    expect(tex).toContain(":4 f#2");
+    expect(tex).toContain(":4 f#3");
     expect(tex).not.toContain("gb");
     expect(screen.queryByText("Campo harmônico")).not.toBeInTheDocument();
   });
@@ -154,6 +155,27 @@ describe("TheoryAndScales — seção Teoria (2.4)", () => {
     expect(screen.getByText(/So What/)).toBeInTheDocument();
     // dorian não tem curiosidade — seção opcional some
     expect(screen.queryByText("Nota histórica/curiosidade:")).not.toBeInTheDocument();
+  });
+});
+
+describe("TheoryAndScales — visualização (2.6)", () => {
+  it("modo Tablatura troca pro tex fretted com \\tuning e digitação automática", () => {
+    render(<TheoryAndScales />);
+    fireEvent.click(screen.getByRole("button", { name: "Tablatura" }));
+
+    const tex = screen.getByTestId("notation").textContent ?? "";
+    expect(tex).toContain("\\tuning g2 d2 a1 e1");
+    expect(tex).toContain("\\displaytranspose 12");
+    expect(tex).toContain(":4 3.3"); // C soante (C2) = corda A casa 3
+  });
+
+  it("trocar o modo durante o playback para o playback", () => {
+    render(<TheoryAndScales />);
+    fireEvent.click(screen.getByRole("button", { name: "Tocar" }));
+    expect(screen.getByRole("button", { name: "Parar" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Ambas" }));
+    expect(screen.getByRole("button", { name: "Tocar" })).toBeInTheDocument();
   });
 });
 

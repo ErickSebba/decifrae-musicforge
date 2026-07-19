@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { playNoteByName } from "../engine/audio-engine";
 import { noteAtFret, parseNote, pitchClassName, pitchClassOf } from "../engine/note-utils";
+import type { FretPosition } from "../engine/theory-tex";
 
 export interface FretboardProps {
   /** Afinação grave→agudo (ex.: ['E1','A1','D2','G2']). O nº de cordas vem do tamanho do array. */
@@ -11,8 +12,11 @@ export interface FretboardProps {
   showNoteNames?: boolean;
   /** Nomes de nota a destacar (octave-agnostic), ex.: ['E','G']. Usado depois para escalas. */
   highlightedNotes?: string[];
-  /** Disparado ao clicar numa posição, com o nome completo da nota (ex.: 'A1'). */
-  onNotePlayed?: (note: string) => void;
+  /**
+   * Disparado ao clicar numa posição, com o nome completo da nota (ex.: 'A1') e a
+   * posição exata (corda/casa — 2.6, usada pela tablatura do editor de frases).
+   */
+  onNotePlayed?: (note: string, position: FretPosition) => void;
 }
 
 // Geometria (px no espaço do viewBox). Cores ficam nos tokens de index.css.
@@ -115,7 +119,7 @@ export function Fretboard({
           const handlePlay = () => {
             const { octave } = parseNote(note);
             playNoteByName(name, octave);
-            onNotePlayed?.(note);
+            onNotePlayed?.(note, { stringIndex: i, fret });
           };
 
           return (
