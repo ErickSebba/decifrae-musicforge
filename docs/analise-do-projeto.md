@@ -1,6 +1,6 @@
 # Decifrae-MusicForge: visão geral do projeto
 
-## O que o projeto é
+## O que o projeto é:
 
 O Decifrae-MusicForge é um aplicativo desktop para estudo de baixo elétrico. A ideia central não é substituir o instrumento físico, mas apoiar o estudo com leitura, ritmo, teoria, visualização do braço do baixo, reprodução de notas e, no futuro, acompanhamento mais completo do progresso e da prática.
 
