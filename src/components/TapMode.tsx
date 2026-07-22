@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RhythmStaff, type RhythmStaffHandle } from "./RhythmStaff";
-import { audioContextTime } from "../engine/audio-engine";
 import {
   beatsPerBar,
   expectedTapTimes,
-  msPerBeat,
   patternDurationMs,
 } from "../engine/rhythm-engine";
 import { FIGURE_LABELS, generateLevelPass } from "../engine/rhythm-generator";
@@ -22,16 +20,6 @@ const BPM_MIN = 40;
 const BPM_MAX = 200;
 const BPM_PRESETS = [60, 80, 100, 120];
 
-// TEMP diag: translateX atual da linha (.at-cursor-beat) e do retângulo (.at-cursor-bar).
-function cursorXs(): { line: number | null; bar: number | null } {
-  const read = (sel: string) => {
-    const el = document.querySelector(sel) as HTMLElement | null;
-    const m = el?.style.transform.match(/translate\((-?[\d.]+)px/);
-    return m ? Number(m[1]) : null;
-  };
-  return { line: read(".at-cursor-beat"), bar: read(".at-cursor-bar") };
-}
-
 interface TapModeProps {
   level: TapLevel;
   /** Presente só quando o próximo nível existe E está desbloqueado (o pai decide). */
@@ -42,10 +30,6 @@ interface TapModeProps {
 
 export function TapMode({ level, onNextLevel, onFinished }: TapModeProps) {
   const staffRef = useRef<RhythmStaffHandle>(null);
-  const cursorStartLoggedRef = useRef(false); // TEMP: log do início real do cursor
-  const countinLineXRef = useRef<number | null>(null); // TEMP diag: x da linha no início do count-in
-  const driftLoggedRef = useRef(false); // TEMP diag
-  const lastAxisLogRef = useRef(0); // TEMP diag: throttle do log de eixos
 
   const [ready, setReady] = useState(false);
   const [metronome, setMetronome] = useState(true);
@@ -67,66 +51,17 @@ export function TapMode({ level, onNextLevel, onFinished }: TapModeProps) {
     [level, passEvents, bpm, clef]
   );
   const targets = useMemo(() => expectedTapTimes(pattern), [pattern]);
-  const msPerBeatValue = useMemo(() => msPerBeat(bpm), [bpm]);
 
   // Mecânica (count-in, clock, taps) no hook compartilhado com o Ditado; o que é do Tap —
-  // cursor da partitura e logs de diagnóstico — entra pelos callbacks.
+  // o cursor da partitura — entra pelos callbacks. (Regressão da extração pro useTapRun
+  // validada manualmente: count-in sem drift, linha/retângulo sincronizados, 1º compasso conta.)
   const run = useTapRun({
     onFrame: (elapsed) => {
       if (elapsed < 0) {
         staffRef.current?.updatePosition(0); // cursor parado no início durante o count-in
-
-        // TEMP diag (bug 1/2): durante o count-in a linha NÃO deveria se mover — seguramos a
-        // posição em 0. Se ela andar aqui, é a transição CSS do cursor animado correndo sozinha.
-        const { line } = cursorXs();
-        if (line !== null) {
-          if (countinLineXRef.current === null) {
-            countinLineXRef.current = line;
-          } else if (!driftLoggedRef.current && Math.abs(line - countinLineXRef.current) > 2) {
-            driftLoggedRef.current = true;
-            console.log("[Tap] DIAG: linha se moveu DURANTE o count-in (não deveria)", {
-              xInicial: Math.round(countinLineXRef.current),
-              xAtual: Math.round(line),
-              elapsed_ms: Math.round(elapsed),
-            });
-          }
-        }
         return;
       }
-
-      if (!cursorStartLoggedRef.current) {
-        cursorStartLoggedRef.current = true;
-        // TEMP: o cursor começa a andar aqui — deve coincidir com t0 e com o alvo[0]=0.
-        console.log("[Tap] cursor começou a andar", {
-          now_s: audioContextTime(),
-          elapsed_ms: elapsed,
-        });
-      }
       staffRef.current?.updatePosition(elapsed);
-
-      // TEMP diag (bug 2): a cada ~500ms compara o eixo do clock com a posição visual da
-      // linha e do retângulo. Se a linha estiver ~1 batida à frente do retângulo, é a
-      // transição CSS adiantando a linha (retângulo segue o tick verdadeiro).
-      if (elapsed - lastAxisLogRef.current >= 500) {
-        lastAxisLogRef.current = elapsed;
-        const { line, bar } = cursorXs();
-        console.log("[Tap] DIAG eixo", {
-          elapsed_ms: Math.round(elapsed),
-          batida: Math.round((elapsed / msPerBeatValue) * 10) / 10,
-          lineX: line === null ? null : Math.round(line),
-          barRectX: bar === null ? null : Math.round(bar),
-        });
-      }
-    },
-    onDiscardedTap: (wouldBe) => {
-      // TEMP diag (bug 1): tap descartado pelo gate de fase.
-      console.log("[Tap] DIAG tap DESCARTADO", {
-        fase: run.phase,
-        wouldBeTapMs: Math.round(wouldBe),
-      });
-    },
-    onTapResult: (tapMs, result, index) => {
-      console.log("[Tap] tap", { tapMs: Math.round(tapMs), result, index }); // TEMP
     },
     onStop: () => {
       staffRef.current?.pause();
@@ -143,28 +78,12 @@ export function TapMode({ level, onNextLevel, onFinished }: TapModeProps) {
     const newDurationMs = patternDurationMs(newPattern);
     setPassEvents(newPass);
 
-    cursorStartLoggedRef.current = false;
-    countinLineXRef.current = null;
-    driftLoggedRef.current = false;
-    lastAxisLogRef.current = 0;
-
-    const { countInStart, t0 } = run.start({
+    run.start({
       pattern: newPattern,
       targets: newTargets,
       durationMs: newDurationMs,
       countInBeats,
       metronome,
-    });
-
-    // TEMP: confirma que count-in, t0 e alvos estão no mesmo eixo.
-    console.log("[Tap] start", {
-      bpm,
-      now_s: audioContextTime(),
-      countInStart_s: countInStart,
-      t0_s: t0,
-      countIn_ms: countInBeats * msPerBeatValue,
-      duration_ms: newDurationMs,
-      expectedTapTimes_ms: newTargets,
     });
   };
 
