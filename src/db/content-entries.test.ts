@@ -3,6 +3,7 @@ import {
   _resetContentEntriesFallback,
   getContentEntries,
   getContentEntryByTopic,
+  updateContentEntryReview,
 } from "./content-entries";
 import { initDb } from "./database";
 
@@ -110,6 +111,31 @@ describe("getContentEntryByTopic", () => {
   });
 });
 
+describe("updateContentEntryReview (3+5.0 — CRUD da tela 3.4)", () => {
+  it("atualiza review_status e note da entrada existente", async () => {
+    mockCountThen(12, [row()]);
+    await updateContentEntryReview("theory-dorian", "contem_erro", "conferir b7 no livro");
+
+    const update = mockDb.execute.mock.calls.find(([sql]) =>
+      String(sql).includes("UPDATE content_entries")
+    )!;
+    expect(update[0]).toContain("SET review_status = $2, note = $3");
+    expect(update[1]).toEqual(["theory-dorian", "contem_erro", "conferir b7 no livro"]);
+  });
+
+  it("id inexistente LANÇA e não executa UPDATE", async () => {
+    mockCountThen(12, []);
+    await expect(
+      updateContentEntryReview("theory-ghost", "confirmado", "")
+    ).rejects.toThrow("não encontrada");
+
+    const updates = mockDb.execute.mock.calls.filter(([sql]) =>
+      String(sql).includes("UPDATE content_entries")
+    );
+    expect(updates).toHaveLength(0);
+  });
+});
+
 describe("fallback em memória (SQLite indisponível)", () => {
   beforeEach(() => {
     vi.mocked(initDb).mockRejectedValue(new Error("no tauri"));
@@ -126,5 +152,17 @@ describe("fallback em memória (SQLite indisponível)", () => {
 
     expect(await getContentEntryByTopic("inexistente")).toBeNull();
     expect(console.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it("update funciona sobre o seed em memória; id inexistente lança igual", async () => {
+    await updateContentEntryReview("theory-dorian", "contem_erro", "checar depois");
+
+    const dorian = await getContentEntryByTopic("dorian");
+    expect(dorian?.reviewStatus).toBe("contem_erro");
+    expect(dorian?.note).toBe("checar depois");
+
+    await expect(updateContentEntryReview("theory-ghost", "confirmado", "")).rejects.toThrow(
+      "não encontrada"
+    );
   });
 });

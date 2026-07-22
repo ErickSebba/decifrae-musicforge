@@ -132,6 +132,50 @@ export async function getContentEntryByTopic(topic: string): Promise<ContentEntr
   }
 }
 
+/** Update em memória com a MESMA regra de negócio (id inexistente lança). */
+function updateReviewInMemory(
+  id: string,
+  reviewStatus: ContentEntry["reviewStatus"],
+  note: string
+) {
+  const entry = memoryStore.get(id);
+  if (!entry) throw new Error(`Entrada de conteúdo não encontrada: ${id}`);
+  memoryStore.set(id, { ...entry, reviewStatus, note });
+}
+
+/**
+ * Atualiza a revisão de uma entrada (3.4 — a tela de revisão é só UI por cima disto).
+ * Lê antes de gravar: id inexistente LANÇA (erro de negócio, não engolido pelo fallback).
+ */
+export async function updateContentEntryReview(
+  id: string,
+  reviewStatus: ContentEntry["reviewStatus"],
+  note: string
+): Promise<void> {
+  await ensureSeeded();
+  if (dbUnavailable) {
+    updateReviewInMemory(id, reviewStatus, note);
+    return;
+  }
+  try {
+    const db = await initDb();
+    const rows = await db.select<ContentRow[]>("SELECT * FROM content_entries WHERE id = $1", [
+      id,
+    ]);
+    if (!rows[0]) throw new Error(`Entrada de conteúdo não encontrada: ${id}`);
+    await db.execute("UPDATE content_entries SET review_status = $2, note = $3 WHERE id = $1", [
+      id,
+      reviewStatus,
+      note,
+    ]);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("não encontrada")) throw error;
+    warnFallback(error);
+    seedMemoryIfEmpty();
+    updateReviewInMemory(id, reviewStatus, note);
+  }
+}
+
 /** Só para testes: reseta fallback em memória e o cache do seed. */
 export function _resetContentEntriesFallback() {
   memoryStore.clear();
