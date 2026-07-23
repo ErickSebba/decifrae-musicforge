@@ -28,3 +28,6 @@ dist-ssr
 
 # Material de pesquisa pessoal (fora do repositório por decisão)
 docs/pesquisa-teoria/
+
+# Experimento pessoal: síntese de áudio do baixo (fora do repositório enquanto não amadurece)
+SintetizadorTeste/
