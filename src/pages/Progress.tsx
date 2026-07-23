@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ContentReviewCenter } from "../components/ContentReviewCenter";
+import { ExerciseProgressPanel } from "../components/ExerciseProgressPanel";
 
 /**
  * Módulo 3 — Progresso. Estrutura em ABAS locais (decisão da 3.4, mesmo padrão da
@@ -11,15 +12,15 @@ import { ContentReviewCenter } from "../components/ContentReviewCenter";
 type ProgressTab = "exercises" | "studyTrack" | "theoryMap" | "central";
 
 const TABS: { id: ProgressTab; label: string; ready: boolean }[] = [
-  { id: "exercises", label: "Exercícios", ready: false }, // 3.1
+  { id: "exercises", label: "Exercícios", ready: true }, // 3.1
   { id: "studyTrack", label: "Trilha de estudo", ready: false }, // 3.2
   { id: "theoryMap", label: "Mapa de teoria", ready: false }, // 3.3
   { id: "central", label: "Central de Conteúdo", ready: true }, // 3.4
 ];
 
 export function Progress() {
-  // Default = única aba pronta; quando a 3.1 chegar, o default será re-decidido.
-  const [tab, setTab] = useState<ProgressTab>("central");
+  // Default re-decidido na 3.1: visão de progresso é a landing natural do módulo.
+  const [tab, setTab] = useState<ProgressTab>("exercises");
 
   return (
     <div className="flex flex-col gap-6">
@@ -55,6 +56,7 @@ export function Progress() {
         </div>
       </div>
 
+      {tab === "exercises" && <ExerciseProgressPanel />}
       {tab === "central" && <ContentReviewCenter />}
     </div>
   );

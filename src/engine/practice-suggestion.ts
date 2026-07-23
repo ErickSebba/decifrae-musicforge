@@ -57,6 +57,12 @@ export interface PracticeSuggestion {
 export const W_NOT_PASSED = 30;
 export const W_WEAK = 40;
 export const W_STALE = 30;
+/**
+ * Teto (dias) da rampa de "parado". COMPARTILHADA de propósito com o badge "parado"
+ * da tela 3.1 (progress-stats importa daqui — fonte única, nunca dois números iguais
+ * por coincidência): a tela alerta exatamente onde a sugestão pontua o máximo. Se os
+ * conceitos divergirem um dia, separar é decisão explícita nos dois módulos.
+ */
 export const STALE_CAP_DAYS = 14;
 export const W_NEVER_PRACTICED = 50;
 export const W_LOW_RATING = 40;
