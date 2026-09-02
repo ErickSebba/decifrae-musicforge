@@ -31,3 +31,18 @@ docs/pesquisa-teoria/
 
 # Experimento pessoal: síntese de áudio do baixo (fora do repositório enquanto não amadurece)
 SintetizadorTeste/
+
+# Índice do CodeGraph — cache re-gerável a partir do código-fonte (`codegraph init`).
+# Não versionar: é binário, muda a cada build e não tem valor fora da máquina local.
+.codegraph/
+
+# Ambiente, segredos e bancos locais
+.env
+.env.*
+!.env.example
+*.sqlite
+*.db
+
+# Ferramentas de IA (ficam só no disco)
+.claude/
+CLAUDE.md
