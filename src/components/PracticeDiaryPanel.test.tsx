@@ -12,6 +12,9 @@ import {
 import type { Exercise, PracticeSession } from "../db/practice-diary";
 
 // localDayString é PURO — reaproveitado; só o I/O do módulo é mockado.
+// SuggestionsPanel (5b) é montado no topo — testado à parte; stub mantém o foco.
+vi.mock("./SuggestionsPanel", () => ({ SuggestionsPanel: () => null }));
+
 vi.mock("../db/practice-diary", async (importOriginal) => {
   const original = await importOriginal<typeof import("../db/practice-diary")>();
   return {

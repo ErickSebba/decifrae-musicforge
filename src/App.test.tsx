@@ -9,6 +9,10 @@ vi.mock("./components/Notation", () => ({
   Notation: () => <div>Notação</div>,
 }));
 
+// SuggestionsPanel (5b) faz I/O de banco no mount (Progresso e Diário). Stub evita
+// chamadas reais de SQLite e mantém o teste focado em navegação.
+vi.mock("./components/SuggestionsPanel", () => ({ SuggestionsPanel: () => null }));
+
 // Mesma razão: RhythmStaff (usado pela página Teoria e Escalas desde a 2.3) instancia
 // AlphaTabApi. Stub com forwardRef pra aceitar a ref da página sem warning.
 vi.mock("./components/RhythmStaff", async () => {

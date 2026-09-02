@@ -15,6 +15,8 @@ import {
 } from "../db/practice-diary";
 import { localDayString } from "../db/exercise-progress";
 import { groupSessionsByExercise, summarizeSessions } from "../engine/diary-stats";
+import { SuggestionsPanel } from "./SuggestionsPanel";
+import { useAppStore } from "../store/useAppStore";
 
 /**
  * Diário de Prática (5a) — página própria do Módulo 5. Cadastro de exercícios do usuário
@@ -141,6 +143,19 @@ export function PracticeDiaryPanel() {
 
   const activeExercises = useMemo(() => exercises.filter((e) => !e.archived), [exercises]);
   const visibleExercises = showArchived ? exercises : activeExercises;
+
+  // Pré-preenchimento vindo da sugestão (5b): assim que os exercícios carregam, se há um
+  // id pendente e ele é um exercício ATIVO, pré-seleciona no form de sessão e limpa a
+  // intenção (one-shot). Exercício inexistente/arquivado: só limpa (sem pré-seleção).
+  const diaryPrefillExerciseId = useAppStore((s) => s.diaryPrefillExerciseId);
+  const setDiaryPrefillExerciseId = useAppStore((s) => s.setDiaryPrefillExerciseId);
+  useEffect(() => {
+    if (!loaded || !diaryPrefillExerciseId) return;
+    if (activeExercises.some((e) => e.id === diaryPrefillExerciseId)) {
+      setSessionDraft((d) => ({ ...d, exerciseId: diaryPrefillExerciseId }));
+    }
+    setDiaryPrefillExerciseId(null);
+  }, [loaded, diaryPrefillExerciseId, activeExercises, setDiaryPrefillExerciseId]);
   const sessionsByExercise = useMemo(() => groupSessionsByExercise(sessions), [sessions]);
   const exerciseName = useMemo(
     () => new Map(exercises.map((e) => [e.id, e.name])),
@@ -234,6 +249,8 @@ export function PracticeDiaryPanel() {
 
   return (
     <div className="flex flex-col gap-8">
+      <SuggestionsPanel />
+
       {/* ————— Exercícios ————— */}
       <section className="flex flex-col gap-4">
         <div className="flex items-center justify-between">

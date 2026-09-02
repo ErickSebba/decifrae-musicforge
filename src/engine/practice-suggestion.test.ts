@@ -2,10 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   STALE_CAP_DAYS,
   W_NEVER_PRACTICED,
+  filterDismissed,
+  resolveSuggestionTarget,
   suggestPractice,
+  suggestionKey,
   type AppExerciseInput,
   type DiaryExerciseInput,
   type DiarySessionInput,
+  type PracticeSuggestion,
 } from "./practice-suggestion";
 
 /** Cenários determinísticos: today fixo, inputs explícitos. */
@@ -249,5 +253,49 @@ describe("ranking combinado e determinismo", () => {
       TODAY
     );
     expect(result).toHaveLength(2);
+  });
+});
+
+describe("helpers de UI (5b)", () => {
+  function suggestion(overrides: Partial<PracticeSuggestion> = {}): PracticeSuggestion {
+    return { source: "app", id: "l1-seminimas", kind: "tap", label: "x", score: 10, reasons: [], ...overrides };
+  }
+
+  it("suggestionKey compõe source:id (namespaces distintos não colidem)", () => {
+    expect(suggestionKey({ source: "app", id: "l1-seminimas" })).toBe("app:l1-seminimas");
+    expect(suggestionKey({ source: "diary", id: "l1-seminimas" })).toBe("diary:l1-seminimas");
+  });
+
+  it("filterDismissed remove só os dispensados, preservando o resto", () => {
+    const list = [
+      suggestion({ source: "app", id: "a" }),
+      suggestion({ source: "diary", id: "a" }),
+      suggestion({ source: "app", id: "b" }),
+    ];
+    const dismissed = new Set(["app:a"]);
+    const kept = filterDismissed(list, dismissed);
+    expect(kept.map(suggestionKey)).toEqual(["diary:a", "app:b"]);
+  });
+
+  it("resolveSuggestionTarget: app/tap → reading com levelId", () => {
+    expect(resolveSuggestionTarget({ source: "app", id: "l3-semibreves", kind: "tap" })).toEqual({
+      type: "reading",
+      mode: "tap",
+      levelId: "l3-semibreves",
+    });
+  });
+
+  it("resolveSuggestionTarget: diary → log-diary com exerciseId", () => {
+    expect(resolveSuggestionTarget({ source: "diary", id: "uuid-1", kind: undefined })).toEqual({
+      type: "log-diary",
+      exerciseId: "uuid-1",
+    });
+  });
+
+  it("resolveSuggestionTarget: app kind sem níveis (timed futuro) → reading sem levelId", () => {
+    expect(resolveSuggestionTarget({ source: "app", id: "t1", kind: "timed" })).toEqual({
+      type: "reading",
+      mode: "timed",
+    });
   });
 });

@@ -176,6 +176,40 @@ function scoreDiaryExercise(
   return { source: "diary", id: exercise.id, label: exercise.name, score, reasons };
 }
 
+/** Chave estável de uma sugestão (namespaces app/diary não colidem, mas compor é à prova disso). */
+export function suggestionKey(s: Pick<PracticeSuggestion, "source" | "id">): string {
+  return `${s.source}:${s.id}`;
+}
+
+/** Remove as sugestões cuja chave está no conjunto de dispensadas (5b, em memória da sessão). */
+export function filterDismissed(
+  suggestions: PracticeSuggestion[],
+  dismissedKeys: ReadonlySet<string>
+): PracticeSuggestion[] {
+  return suggestions.filter((s) => !dismissedKeys.has(suggestionKey(s)));
+}
+
+/** Descritor de para onde o clique de uma sugestão leva (5b). Puro — sem UI/db. */
+export type SuggestionTarget =
+  | { type: "reading"; mode: string; levelId?: string }
+  | { type: "log-diary"; exerciseId: string };
+
+/**
+ * Decide o destino do clique a partir do `source` (e `kind`, p/ app):
+ * - diary → registrar sessão daquele exercício;
+ * - app + kind 'tap'/'dictation' → modo do Módulo 1 com o nível do id (CURATED_LEVELS);
+ * - app + kind sem níveis (ex.: 'timed' futuro) → o modo, sem levelId.
+ * Órfão (id sem nível) é problema do CONSUMIDOR (cai no "nível atual"), não daqui.
+ */
+export function resolveSuggestionTarget(
+  s: Pick<PracticeSuggestion, "source" | "id" | "kind">
+): SuggestionTarget {
+  if (s.source === "diary") return { type: "log-diary", exerciseId: s.id };
+  const mode = s.kind ?? "tap";
+  const hasLevels = mode === "tap" || mode === "dictation";
+  return { type: "reading", mode, ...(hasLevels ? { levelId: s.id } : {}) };
+}
+
 /**
  * Ranqueia todos os candidatos (score desc; empate desfeito por source+id — ordem
  * estável e determinística). A tela decide quantos exibir (`limit` opcional).

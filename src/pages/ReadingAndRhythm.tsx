@@ -33,9 +33,15 @@ const ANSWER_LETTERS = ["C", "D", "E", "F", "G", "A", "B"];
 const LEVEL_ORDER = CURATED_LEVELS.map((lv) => lv.id);
 
 /** Seleção de nível do Tap com desbloqueio linear persistido (3b). */
-function TapSection() {
-  const [levelIndex, setLevelIndex] = useState(0);
+function TapSection({ initialLevelId }: { initialLevelId?: string }) {
+  // Deep-link da sugestão (5b): abre direto no nível pedido, se ele existir no catálogo
+  // (órfão cai no cálculo de "nível atual" abaixo). Só na montagem — não segue mudanças.
+  const initialIndex = initialLevelId
+    ? CURATED_LEVELS.findIndex((lv) => lv.id === initialLevelId)
+    : -1;
+  const [levelIndex, setLevelIndex] = useState(initialIndex >= 0 ? initialIndex : 0);
   const [progress, setProgress] = useState<ProgressRecord[]>([]);
+  const pinnedInitial = initialIndex >= 0;
 
   // Desbloqueio derivado em runtime do `passed` dos anteriores — nada de estado próprio.
   const unlocked = useMemo(() => deriveUnlockedLevels(LEVEL_ORDER, progress), [progress]);
@@ -51,6 +57,8 @@ function TapSection() {
     getLevelProgress().then((records) => {
       if (cancelled) return;
       setProgress(records);
+      // Se veio um nível pela sugestão (5b), respeita-o — não sobrescreve com "nível atual".
+      if (pinnedInitial) return;
       const open = deriveUnlockedLevels(LEVEL_ORDER, records);
       const passed = new Set(records.filter((p) => p.passed).map((p) => p.levelId));
       const current = CURATED_LEVELS.findIndex((lv) => open.has(lv.id) && !passed.has(lv.id));
@@ -59,7 +67,7 @@ function TapSection() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [pinnedInitial]);
 
   const level = CURATED_LEVELS[levelIndex];
   const nextLevel = CURATED_LEVELS[levelIndex + 1];
@@ -245,9 +253,19 @@ function FreeNoteMode() {
 
 /** Módulo 1 — Leitura e Ritmo. Seletor de modo + modo Livre (sem pressão de tempo). */
 export function ReadingAndRhythm() {
-  const [activeMode, setActiveMode] = useState("free");
   const clef = useAppStore((s) => s.clef);
   const setClef = useAppStore((s) => s.setClef);
+  // Deep-link one-shot da sugestão (5b): lê o alvo UMA vez pra decidir o modo/nível
+  // inicial e LIMPA a intenção — cliques posteriores do usuário mandam normalmente.
+  const readingTarget = useAppStore((s) => s.readingTarget);
+  const setReadingTarget = useAppStore((s) => s.setReadingTarget);
+  const [initial] = useState(() => readingTarget);
+  const [activeMode, setActiveMode] = useState(() => readingTarget?.mode ?? "free");
+  useEffect(() => {
+    if (readingTarget) setReadingTarget(null);
+    // só na montagem: consome a intenção que existia ao abrir a página
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="flex flex-col gap-6 max-w-2xl">
@@ -309,7 +327,9 @@ export function ReadingAndRhythm() {
       </div>
 
       {activeMode === "free" && <FreeNoteMode />}
-      {activeMode === "tap" && <TapSection />}
+      {activeMode === "tap" && (
+        <TapSection initialLevelId={initial?.mode === "tap" ? initial.levelId : undefined} />
+      )}
       {activeMode === "timed" && <TimedNoteMode />}
       {activeMode === "dictation" && <DictationSection />}
     </div>

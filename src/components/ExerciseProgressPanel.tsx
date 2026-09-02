@@ -25,6 +25,7 @@ import {
   type PracticeDayRecord,
 } from "../db/exercise-progress";
 import { getSessions, type PracticeSession } from "../db/practice-diary";
+import { SuggestionsPanel } from "./SuggestionsPanel";
 
 /**
  * Aba "Exercícios" da página Progresso (3.1). Lê SÓ o que existe (agregado + contagem
@@ -147,6 +148,8 @@ export function ExerciseProgressPanel() {
 
   return (
     <div className="flex flex-col gap-6">
+      <SuggestionsPanel />
+
       {/* Stats compactos (a "distribuição por kind" volta quando houver mais de um kind). */}
       <dl className="flex gap-8 text-sm" style={{ color: "var(--color-text-muted)" }}>
         {[

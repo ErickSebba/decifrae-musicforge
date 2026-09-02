@@ -38,6 +38,9 @@ vi.mock("../db/practice-diary", () => ({
   getSessions: vi.fn(),
 }));
 
+// SuggestionsPanel (5b) é montado no topo — testado à parte; stub mantém o foco.
+vi.mock("./SuggestionsPanel", () => ({ SuggestionsPanel: () => null }));
+
 function record(overrides: Partial<ExerciseProgressRecord> = {}): ExerciseProgressRecord {
   return {
     kind: "tap",
