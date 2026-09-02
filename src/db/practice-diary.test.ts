@@ -4,6 +4,7 @@ import {
   addSession,
   archiveExercise,
   createExercise,
+  deleteSession,
   getExercises,
   getSessions,
   updateExercise,
@@ -181,5 +182,27 @@ describe("fallback em memória", () => {
     expect(sessions[0].bpm).toBe(80);
 
     expect(console.warn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("deleteSession (5a)", () => {
+  it("executa o DELETE com o id certo", async () => {
+    await deleteSession("s-123");
+
+    const [sql, params] = mockDb.execute.mock.calls[0];
+    expect(sql).toContain("DELETE FROM practice_sessions");
+    expect(params).toEqual(["s-123"]);
+  });
+
+  it("fallback em memória remove a sessão carregada", async () => {
+    vi.mocked(initDb).mockRejectedValue(new Error("no tauri"));
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const ex = await createExercise({ name: "Groove", category: "ritmo", complexity: 2 });
+    const session = await addSession({ exerciseId: ex.id, bpm: 90 });
+    expect(await getSessions()).toHaveLength(1);
+
+    await deleteSession(session.id);
+    expect(await getSessions()).toHaveLength(0);
   });
 });

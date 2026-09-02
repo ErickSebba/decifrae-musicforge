@@ -290,6 +290,25 @@ export async function addSession(input: SessionInput): Promise<PracticeSession> 
   return session;
 }
 
+/**
+ * Apaga uma sessão (5a). Sessão é registro pontual sem histórico atrelado → DELETA
+ * de verdade (diferente do exercício, que se ARQUIVA por ter sessões atreladas).
+ * Apagar id inexistente é no-op inofensivo — sem validação de negócio.
+ */
+export async function deleteSession(id: string): Promise<void> {
+  if (dbUnavailable) {
+    memorySessions.delete(id);
+    return;
+  }
+  try {
+    const db = await initDb();
+    await db.execute("DELETE FROM practice_sessions WHERE id = $1", [id]);
+  } catch (error) {
+    warnFallback(error);
+    memorySessions.delete(id);
+  }
+}
+
 /** Só para testes: reseta o estado do fallback em memória. */
 export function _resetPracticeDiaryFallback() {
   memoryExercises.clear();
