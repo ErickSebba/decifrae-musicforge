@@ -161,3 +161,126 @@ Este módulo cobre quatro tipos diferentes de progresso, que são conceitualment
 - Estrutura exata do "mapa de progresso da teoria" (Módulo 3.3) — quantos tópicos, como o grafo de dependência entre eles é definido.
 - Se algum dia fizer sentido sincronizar progresso entre múltiplos computadores (exigiria backend — hoje fora do escopo, já que tudo é local).
 - Se/quando expandir pra outros instrumentos (ver nota sobre o nome na seção 1), revisar o quanto da camada de visualização e teoria já está de fato genérica vs. ainda acoplada a baixo de 4 cordas.
+
+## 12. Divergências em relação ao `project-brief.md` (o brief NÃO é contrato)
+
+> **Leia esta seção junto com o brief.** O `project-brief.md` é o documento
+> fundador e continua valendo pra tudo que não está listado aqui — mas ele
+> foi escrito ANTES da implementação, e vários pontos foram deliberadamente
+> alterados durante o desenvolvimento. **Onde esta seção contradiz o brief,
+> esta seção vence.** O próprio brief prevê isso (seção 10: "este documento
+> é um guia, não um contrato rígido").
+>
+> Nada aqui é erro a corrigir. São decisões tomadas com o usuário, com o
+> motivo registrado.
+
+### 12.1 Divergências JÁ EM VIGOR (implementadas)
+
+| Brief diz | Realidade | Motivo |
+|---|---|---|
+| Teoria musical via **tonal.js** (seção 3) | Teoria escrita à mão em `note-utils.ts` + `theory-engine.ts` | Controle total da grafia enarmônica (regra de ouro: letra antes do acidente). A lib não garantiria isso do jeito que o projeto exige. |
+| Módulo 2: "todo texto teórico **gerado** aqui é registrado na Central" | Os 12 textos foram **escritos pelo usuário** a partir dos livros dele, transcritos literalmente em `theory-content-seed.ts` | Conteúdo pedagógico original e confiável importa mais que geração automática. Ver 12.3 — isso muda o propósito da tela 3.4. |
+| Editor de frases "útil pra exportar/imprimir" (Módulo 2) | Editor existe (2.5/2.5b), mas **sem persistência** — frase só em memória | Persistência de frases foi movida pro Módulo 4 (biblioteca de partituras), pra não improvisar schema. Decisão reconfirmada na 3+5.0. |
+| `PracticeInputProvider` como interface concreta (seção 4) | Só existe como **intenção arquitetural documentada**, não como código | Nenhuma implementação alternativa existe ainda (o Módulo 6 está fora de escopo); criar a abstração sem segundo caso de uso seria abstração especulativa. Revisitar quando o Módulo 6 chegar. |
+
+### 12.2 Divergências que AFETAM O QUE VEM A SEGUIR
+
+**Módulo 3.1 — o brief promete mais do que o schema entrega.**
+O brief pede "histórico completo de tentativas", "últimos N resultados" e
+"evolução em gráfico de linha". A modelagem escolhida na 3+5.0 guarda
+**apenas agregado** (best/média/attempts) + **contagem por dia**. Consequência
+prática, decidida conscientemente: **não existe curva de evolução por
+tentativa** e não existe "últimos N resultados". O que a tela 3.1 PODE
+entregar: estado atual por exercício, heatmap de frequência (dias), e
+"exercícios estagnados" (derivável de `last_attempted_at` + média). Se um dia
+a curva de evolução virar requisito real, é mudança de schema (tabela de
+tentativas) — decisão nova, não ajuste.
+
+**Módulo 3.2 — o brief queria cadastro DENTRO do app; a decisão foi código.**
+O brief descreve cadastrar livros no app (digitação manual ou importação de
+sumário via CSV), o que implicaria tabela de livros/capítulos + UI de cadastro.
+A decisão tomada foi: **conteúdo fixo no código** (o usuário edita o arquivo e
+recompila); o banco (`study_track_progress`) guarda **só o progresso** sobre ids
+estáveis. Consequência: não haverá tela de cadastro de livro, e adicionar um
+livro novo exige mexer no código. Pré-requisito da sub-etapa 3.2: o usuário
+escrever a estrutura fixa (livros → capítulos → exercícios) antes de a tela
+começar.
+
+**Módulo 3.3 — mesma inversão da 3.2.**
+O grafo de tópicos é **fixo no código**, não cadastrável. A "decisão aberta"
+do brief (seção 11: "estrutura exata do mapa, quantos tópicos, como o grafo de
+dependência é definido") **continua aberta** e é pré-requisito da sub-etapa 3.3:
+o usuário precisa definir os nós e as dependências antes da tela existir.
+Regra de status já fechada: auto SÓ PROMOVE (`nao_iniciado` < `estudando` <
+`praticado` < `dominado`); manual grava exato.
+
+### 12.3 Módulo 3.4 — o propósito da tela MUDOU
+
+O brief desenhou a Central de Conteúdo como rede de segurança contra
+**conteúdo gerado pelo app**: "conferir se algo gerado está errado ou
+impreciso... o que já foi validado por você versus o que ainda não foi
+checado contra fontes confiáveis".
+
+Na prática isso se inverteu: as 12 entradas de teoria foram escritas pelo
+próprio usuário a partir dos livros dele, e por isso nascem com
+`review_status = 'confirmado'` (decisão da 2.4). Não há, hoje, nenhum conteúdo
+"não revisado" no sistema — a premissa original da tela não se aplica ao
+conteúdo atual.
+
+A tela continua fazendo sentido por dois motivos, ambos futuros:
+1. O usuário pode reencontrar erro no próprio texto ao estudar (marcar
+   `contem_erro` + observação) — revisão do autor sobre si mesmo.
+2. Conteúdo **realmente gerado** pelo app deve chegar depois (teoria da
+   improvisação, exercícios procedurais, explicações derivadas) e nascerá
+   `nao_revisado` — aí a premissa original volta a valer.
+
+**Implicação pro plano da 3.4:** a tela deve ser desenhada como ferramenta de
+revisão de propósito geral (serve a conteúdo do usuário E a conteúdo futuro
+gerado), não como "fila de verificação de saída de IA".
+
+### 12.4 Intenções novas que o brief NÃO previa
+
+Registradas na seção 11 (Visão de produto). Duas delas **conflitam com o
+brief** e o conflito precisa ficar explícito:
+
+**Integração web com o decifrae.com.br × requisitos não-funcionais.**
+O brief (seção 8) estabelece **offline-first**, **privacidade com todos os
+dados em disco local (SQLite, sem telemetria)** e **desktop multiplataforma**;
+a seção 11 do brief lista sincronização entre computadores como "fora do
+escopo, exigiria backend". A intenção nova — MusicForge rodando no navegador,
+integrado ao site, com login e dados compartilhados — **contradiz os três**:
+sai de offline-first, tira os dados do disco do usuário, e exige exatamente o
+backend que o brief descartou. Não é impedimento; é uma mudança de produto
+consciente que deve ser assumida como tal quando o marco chegar, e que
+provavelmente exige reescrever a seção 8 do brief.
+
+**Plataforma de suporte a ensaio (importar áudio/cifra de outros músicos).**
+Não existe no brief em nenhuma forma. Atravessa Módulo 4 (importar
+partitura/cifra) e Módulo 6 (escuta), e acrescenta uma capacidade nova
+(alinhar notação a áudio livre de terceiros) que nenhum dos dois cobre.
+Ver seção 11 pra restrição técnica central (grade métrica).
+
+**Redesenho completo da identidade visual.**
+O brief (seção 7) descreve a identidade a ser construída, e ela foi. A
+intenção de refazê-la por inteiro é posterior e não conflita — só reforça a
+regra de tokens centralizados que o próprio brief já pedia.
+
+### 12.5 O que o brief JÁ AUTORIZA (não é divergência)
+
+Registrado aqui pra evitar rediscussão:
+
+- **Geração procedural de exercícios** está explicitamente prevista: seção 5
+  do brief diz que os exercícios "devem ser originais, criados pela própria
+  ferramenta (**geração algorítmica** ou inseridos manualmente pelo usuário)".
+  O `rhythm-generator.ts` (3c-1) já é uma implementação disso para ritmo, e
+  serve de modelo para os demais eixos: catálogo de elementos + perfis que
+  definem o vocabulário permitido por nível + regras anti-degenerescência +
+  RNG injetável. **Não copiar exercícios dos livros** — extrair dos livros os
+  EIXOS de variação, os VALORES por eixo, a ORDEM de progressão e as REGRAS de
+  combinação. Exercícios procedurais são perfis em CÓDIGO (como
+  `CURATED_LEVELS`) com progresso em `exercise_progress`; não confundir com a
+  tabela `exercises` do Módulo 5, que é cadastro do usuário para prática no
+  instrumento físico.
+- **Seletor de clave em teoria e exercícios** (Módulos 1 e 2) — feito.
+- **Tablatura junto da partitura** — o brief já cita que o AlphaTab renderiza
+  as duas; a 2.6 implementou o seletor.

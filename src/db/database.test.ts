@@ -87,27 +87,56 @@ describe("migração v1 — banco velho com dados do Tap", () => {
   });
 });
 
+/** Params de todos os INSERT em schema_migrations (as versões registradas neste run). */
+const registeredVersions = () =>
+  mockDb.execute.mock.calls
+    .filter((c) => (c[0] as string).includes("INSERT OR IGNORE INTO schema_migrations"))
+    .map((c) => (c[1] as number[])[0]);
+
 describe("migração v1 — banco novo", () => {
-  it("sem tabela antiga: nada de copy/drop, só registra a versão (no-op registrado)", async () => {
+  it("sem tabela antiga do Tap: nada de copy/drop DO TAP, mas registra a versão 1", async () => {
     routeSelects({ oldTableExists: false, appliedVersions: [] });
     await initDb();
 
     const sql = executedSql();
     expect(sql.some((s) => s.includes("INSERT OR IGNORE INTO exercise_progress"))).toBe(false);
-    expect(sql.some((s) => s.includes("DROP TABLE"))).toBe(false);
-    expect(sql.some((s) => s.includes("INSERT OR IGNORE INTO schema_migrations"))).toBe(true);
+    expect(sql.some((s) => s.includes("DROP TABLE IF EXISTS tap_level_progress"))).toBe(false);
+    expect(registeredVersions()).toContain(1);
   });
 });
 
 describe("migração v1 — versão já aplicada", () => {
-  it("não reaplica nem re-registra", async () => {
-    routeSelects({ oldTableExists: true, appliedVersions: [1] });
+  it("com v1 E v2 aplicadas, nada roda nem re-registra", async () => {
+    routeSelects({ oldTableExists: true, appliedVersions: [1, 2] });
     await initDb();
 
     const sql = executedSql();
     expect(sql.some((s) => s.includes("INSERT OR IGNORE INTO exercise_progress"))).toBe(false);
     expect(sql.some((s) => s.includes("DROP TABLE"))).toBe(false);
-    expect(sql.some((s) => s.includes("INSERT OR IGNORE INTO schema_migrations"))).toBe(false);
+    expect(registeredVersions()).toEqual([]);
+  });
+});
+
+describe("migração v2 — trilha de estudo pro banco (drop antigo + seed dos 6 livros)", () => {
+  it("com v1 já aplicada e v2 pendente: dropa study_track_progress, semeia 6 livros, registra v2", async () => {
+    routeSelects({ oldTableExists: false, appliedVersions: [1] });
+    await initDb();
+
+    const sql = executedSql();
+    expect(sql.some((s) => s.includes("DROP TABLE IF EXISTS study_track_progress"))).toBe(true);
+    const seedInserts = mockDb.execute.mock.calls.filter((c) =>
+      (c[0] as string).includes("INSERT OR IGNORE INTO study_books")
+    );
+    expect(seedInserts).toHaveLength(6);
+    // seed idempotente por id determinístico
+    expect(seedInserts[0][1]).toEqual(["seed-hal-leonard", "Hal Leonard Bass Method", 0]);
+    expect(registeredVersions()).toEqual([2]);
+  });
+
+  it("v1 e v2 pendentes (banco antigo): ambas rodam, registra [1, 2] em ordem", async () => {
+    routeSelects({ oldTableExists: true, appliedVersions: [] });
+    await initDb();
+    expect(registeredVersions()).toEqual([1, 2]);
   });
 });
 
@@ -139,7 +168,8 @@ describe("migração v1 — falha ENTRE a cópia e o drop (cenário exigido)", (
     // Re-copia com OR IGNORE (linhas já copiadas/atualizadas são preservadas — sem dupla).
     expect(sql.filter((s) => s.includes("INSERT OR IGNORE INTO exercise_progress"))).toHaveLength(1);
     expect(sql.filter((s) => s.includes("DROP TABLE IF EXISTS tap_level_progress"))).toHaveLength(1);
-    expect(sql.filter((s) => s.includes("INSERT OR IGNORE INTO schema_migrations"))).toHaveLength(1);
+    // Re-run completa as DUAS migrações pendentes (v1 travou antes; agora v1 e v2 rodam).
+    expect(registeredVersions()).toEqual([1, 2]);
   });
 
   it("initDb que falhou não cacheia o singleton (retry possível)", async () => {

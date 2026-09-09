@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ContentReviewCenter } from "../components/ContentReviewCenter";
 import { ExerciseProgressPanel } from "../components/ExerciseProgressPanel";
+import { StudyTrackPanel } from "../components/StudyTrackPanel";
 
 /**
  * Módulo 3 — Progresso. Estrutura em ABAS locais (decisão da 3.4, mesmo padrão da
@@ -13,7 +14,7 @@ type ProgressTab = "exercises" | "studyTrack" | "theoryMap" | "central";
 
 const TABS: { id: ProgressTab; label: string; ready: boolean }[] = [
   { id: "exercises", label: "Exercícios", ready: true }, // 3.1
-  { id: "studyTrack", label: "Trilha de estudo", ready: false }, // 3.2
+  { id: "studyTrack", label: "Trilha de estudo", ready: true }, // 3.2
   { id: "theoryMap", label: "Mapa de teoria", ready: false }, // 3.3
   { id: "central", label: "Central de Conteúdo", ready: true }, // 3.4
 ];
@@ -57,6 +58,7 @@ export function Progress() {
       </div>
 
       {tab === "exercises" && <ExerciseProgressPanel />}
+      {tab === "studyTrack" && <StudyTrackPanel />}
       {tab === "central" && <ContentReviewCenter />}
     </div>
   );

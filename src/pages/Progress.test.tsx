@@ -9,32 +9,35 @@ vi.mock("../components/ContentReviewCenter", () => ({
 vi.mock("../components/ExerciseProgressPanel", () => ({
   ExerciseProgressPanel: () => <div data-testid="exercises">Exercícios stub</div>,
 }));
+vi.mock("../components/StudyTrackPanel", () => ({
+  StudyTrackPanel: () => <div data-testid="studyTrack">Trilha stub</div>,
+}));
 
 beforeEach(() => {
   vi.clearAllMocks();
 });
 
 describe("Progress — estrutura de abas do Módulo 3", () => {
-  it("abas: Exercícios e Central habilitadas; Trilha e Mapa desabilitadas '(em breve)'", () => {
+  it("abas: Exercícios, Trilha e Central habilitadas; só Mapa desabilitada '(em breve)'", () => {
     render(<Progress />);
 
     expect(screen.getByRole("button", { name: "Exercícios" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Trilha de estudo" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Central de Conteúdo" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: /Trilha de estudo \(em breve\)/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: /Mapa de teoria \(em breve\)/ })).toBeDisabled();
   });
 
   it("default é a aba Exercícios (re-decisão da 3.1)", () => {
     render(<Progress />);
     expect(screen.getByTestId("exercises")).toBeInTheDocument();
-    expect(screen.queryByTestId("central")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("studyTrack")).not.toBeInTheDocument();
   });
 
-  it("trocar pra Central desmonta Exercícios e monta a revisão", () => {
+  it("trocar pra Trilha de estudo desmonta Exercícios e monta a trilha", () => {
     render(<Progress />);
-    fireEvent.click(screen.getByRole("button", { name: "Central de Conteúdo" }));
+    fireEvent.click(screen.getByRole("button", { name: "Trilha de estudo" }));
 
-    expect(screen.getByTestId("central")).toBeInTheDocument();
+    expect(screen.getByTestId("studyTrack")).toBeInTheDocument();
     expect(screen.queryByTestId("exercises")).not.toBeInTheDocument();
   });
 });

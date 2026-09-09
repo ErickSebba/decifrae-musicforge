@@ -41,7 +41,38 @@ async function migrateTapProgress(db: Database): Promise<void> {
   }
 }
 
-const MIGRATIONS: Migration[] = [{ version: 1, run: migrateTapProgress }];
+/** Seed da trilha de estudo (3.2): 6 livros do brief, título só, autor editável depois. */
+const STUDY_SEED_BOOKS: { id: string; title: string }[] = [
+  { id: "seed-hal-leonard", title: "Hal Leonard Bass Method" },
+  { id: "seed-jaco", title: "Jaco Pastorius Bass Method" },
+  { id: "seed-simandl", title: "Simandl" },
+  { id: "seed-ariane-cap", title: "Ariane Cap" },
+  { id: "seed-rufus-reid", title: "Rufus Reid" },
+  { id: "seed-gary-willis", title: "Gary Willis" },
+];
+
+/**
+ * v2 — trilha de estudo passa a viver NO BANCO (3.2, reversão do modelo "fixo no código"
+ * da 3+5.0). Dropa a antiga study_track_progress (nunca teve UI nem dados) e semeia os 6
+ * livros do brief. Passos idempotentes (DROP IF EXISTS, INSERT OR IGNORE por id
+ * determinístico): roda 1× (versão registrada), respeitando deleções futuras do usuário.
+ */
+async function migrateStudyTrackToBooks(db: Database): Promise<void> {
+  await db.execute("DROP TABLE IF EXISTS study_track_progress");
+  for (let i = 0; i < STUDY_SEED_BOOKS.length; i++) {
+    const book = STUDY_SEED_BOOKS[i];
+    await db.execute(
+      `INSERT OR IGNORE INTO study_books (id, title, author, position, created_at)
+       VALUES ($1, $2, '', $3, datetime('now'))`,
+      [book.id, book.title, i]
+    );
+  }
+}
+
+const MIGRATIONS: Migration[] = [
+  { version: 1, run: migrateTapProgress },
+  { version: 2, run: migrateStudyTrackToBooks },
+];
 
 async function runMigrations(db: Database): Promise<void> {
   const rows = await db.select<{ version: number }[]>("SELECT version FROM schema_migrations");
@@ -97,15 +128,46 @@ export async function initDb(): Promise<Database> {
     )
   `);
 
-  // Progresso da trilha de estudo externa (3.2). Conteúdo (livros/capítulos) é CÓDIGO;
-  // aqui só o progresso sobre ids estáveis. Ausência de linha = 'nao_iniciado'.
+  // Trilha de estudo externa (3.2) — conteúdo NO BANCO (livros/capítulos/exercícios,
+  // reversão do modelo "fixo no código" na 3.2). Nomes PREFIXADOS study_ porque a diary
+  // (M5) já tem uma tabela `exercises`. own_status do capítulo só vale quando ele não tem
+  // exercícios; senão o status é DERIVADO (engine study-track.ts). Status do livro também
+  // é derivado (sem coluna). Integridade/cascade validados em JS.
   await db.execute(`
-    CREATE TABLE IF NOT EXISTS study_track_progress (
-      item_id    TEXT PRIMARY KEY,
-      status     TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+    CREATE TABLE IF NOT EXISTS study_books (
+      id         TEXT PRIMARY KEY,
+      title      TEXT NOT NULL,
+      author     TEXT NOT NULL DEFAULT '',
+      position   INTEGER NOT NULL,
+      created_at TEXT NOT NULL
     )
   `);
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS study_chapters (
+      id         TEXT PRIMARY KEY,
+      book_id    TEXT NOT NULL,
+      position   INTEGER NOT NULL,
+      title      TEXT NOT NULL,
+      own_status TEXT,
+      created_at TEXT NOT NULL
+    )
+  `);
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS study_exercises (
+      id         TEXT PRIMARY KEY,
+      chapter_id TEXT NOT NULL,
+      position   INTEGER NOT NULL,
+      label      TEXT NOT NULL,
+      status     TEXT NOT NULL DEFAULT 'nao_iniciado',
+      created_at TEXT NOT NULL
+    )
+  `);
+  await db.execute(
+    "CREATE INDEX IF NOT EXISTS idx_study_chapters_book ON study_chapters(book_id)"
+  );
+  await db.execute(
+    "CREATE INDEX IF NOT EXISTS idx_study_exercises_chapter ON study_exercises(chapter_id)"
+  );
 
   // Progresso do mapa de teoria (3.3). Grafo de tópicos é CÓDIGO; ausência = 'nao_iniciado'.
   // Regra (em JS, theory-map-progress.ts): auto só promove; manual livre.
