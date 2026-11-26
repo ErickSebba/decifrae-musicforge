@@ -63,7 +63,6 @@ npm run lint
 |---|---|
 | [docs/project-brief.md](docs/project-brief.md) | visão do produto e os módulos planejados |
 | [docs/ESTADO-DO-PROJETO.md](docs/ESTADO-DO-PROJETO.md) | o que foi feito por fase, decisões e o que falta |
-| [docs/CONTEXTO-PROJETO.md](docs/CONTEXTO-PROJETO.md) | mapa técnico do código |
 | [docs/theory-content-source.md](docs/theory-content-source.md) | fonte dos textos teóricos |
 
 ## O que aprendi

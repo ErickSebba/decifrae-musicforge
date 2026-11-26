@@ -46,3 +46,8 @@ SintetizadorTeste/
 # Ferramentas de IA (ficam só no disco)
 .claude/
 CLAUDE.md
+
+# Material de estudo e de IA (fica só no disco)
+CLAUDE.md
+docs/CONTEXTO-PROJETO.md
+Resumo.md
