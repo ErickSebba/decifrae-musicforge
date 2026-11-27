@@ -5,6 +5,10 @@ leitura de partitura e ritmo, teoria e escalas no braço do instrumento, editor 
 acompanhamento de progresso e diário de prática. É uma ferramenta de apoio ao estudo, não
 substitui o instrumento. Faz parte do ecossistema [decifrae.com.br](https://decifrae.com.br).
 
+*In English: desktop app (Tauri 2 + React + TypeScript, SQLite) for practicing electric bass:
+sight-reading and rhythm drills, scales on the fretboard, a phrase editor, progress tracking and a
+practice journal. The training logic lives in pure TypeScript modules covered by unit tests.*
+
 ![Modo Tap: tocar no ritmo da pauta, com metrônomo e níveis desbloqueáveis](docs/imagens/leitura-ritmo-tap.png)
 
 ![Escala na pauta e no braço do baixo, com reprodução sincronizada](docs/imagens/teoria-escalas-braco.png)
@@ -61,7 +65,6 @@ npm run lint
 
 | Documento | Conteúdo |
 |---|---|
-| [docs/project-brief.md](docs/project-brief.md) | visão do produto e os módulos planejados |
 | [docs/ESTADO-DO-PROJETO.md](docs/ESTADO-DO-PROJETO.md) | o que foi feito por fase, decisões e o que falta |
 | [docs/theory-content-source.md](docs/theory-content-source.md) | fonte dos textos teóricos |
 

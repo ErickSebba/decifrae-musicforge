@@ -2,13 +2,7 @@
 
 > Documento-panorama gerado em **2026-09-02**, após a fase 5b. Reúne, num lugar só,
 > o que o projeto é, o que já foi feito (com os commits), as decisões tomadas, e o
-> que falta — em ordem. Serve pra retomar o contexto rápido depois de um tempo parado.
->
-> **Relação com os outros docs:** `docs/project-brief.md` é o brief fundador (os 5
-> módulos, a visão); `docs/CONTEXTO-PROJETO.md` é o handoff técnico vivo (mapa do
-> código linha a linha, mecânicas "não reabrir"). Este documento fica ENTRE os dois:
-> mais navegável que o CONTEXTO, mais atualizado que o brief. Quando algo aqui
-> conflitar com o código, o código vence.
+> que falta — em ordem. Quando algo aqui conflitar com o código, o código vence.
 
 ---
 
@@ -221,23 +215,10 @@ UI já está prevista; o schema já existe):
   persistindo); volta quando Cronometrado/Ditado persistirem.
 - **Persistência do Cronometrado/Ditado** — agora trivial (`saveExerciseResult('timed'|
   'dictation', …)`); falta decidir a métrica de ratio de cada um.
-- **Síntese de áudio melhor** (harmônicos/samples) — há um experimento pessoal do usuário
+- **Síntese de áudio melhor** (harmônicos/samples) — há um experimento pessoal
   fora do repo (`SintetizadorTeste/`, gitignorado).
 - **6/8 no gerador de ritmo** (3c-2); BPM ajustável nos playbacks; teoria além da 2.1
   (sétimas, inversões, campo harmônico modal, escalas menores harmônica/melódica);
   acidentes no pool de leitura; consolidar os geradores de tex num só; persistir
   `staveDisplay` entre sessões.
 
----
-
-## 8. Processo de trabalho (como as sub-etapas são conduzidas)
-
-- **Plan Mode antes de cada sub-etapa** — plano mostrado e aprovado antes de codar.
-  Decisões de produto/UX são do usuário; as técnicas são do agente, documentadas no plano.
-- **Testes junto com a feature.** Se um refactor quebra teste existente: parar e reportar,
-  nunca ajustar o teste pra passar.
-- **Validação manual pelo usuário** (no `tauri dev`) antes de cada commit — especialmente
-  notação musical, que teste automatizado não vê.
-- **Commits pequenos, um por sub-etapa.** Não commitar sem o usuário pedir.
-- Ao fechar cada sub-etapa: atualizar `CONTEXTO-PROJETO.md` (e reindexar `docs/` no
-  context-mode).
